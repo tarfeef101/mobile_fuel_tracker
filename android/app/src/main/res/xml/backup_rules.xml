@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude flutter_secure_storage files from backup -->
+    <exclude
+        domain="sharedpref"
+        path="flutter_secure_storage.xml" />
+
+    <!-- Exclude the database file from backup to avoid conflicts -->
+    <exclude
+        domain="database"
+        path="fuel_tracker.db" />
+
+    <!-- Include other app data -->
+    <include
+        domain="sharedpref"
+        path="app_settings.pref" />
+</full-backup-content>
