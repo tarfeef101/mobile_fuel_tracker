@@ -17,6 +17,7 @@ class FillEntry {
   final String? notes;
   final DateTime? syncedAt;
   final String deviceId;
+  final String vehicleId; // Foreign key to Vehicle table
 
   FillEntry({
     required this.id,
@@ -34,6 +35,7 @@ class FillEntry {
     this.notes,
     this.syncedAt,
     required this.deviceId,
+    required this.vehicleId,
   });
 
   // Factory constructor for creating from JSON
@@ -54,6 +56,7 @@ class FillEntry {
       notes: json['notes'] as String?,
       syncedAt: json['syncedAt'] == null ? null : DateTime.parse(json['syncedAt'] as String),
       deviceId: json['deviceId'] as String,
+      vehicleId: json['vehicleId'] as String,
     );
   }
 
@@ -75,6 +78,7 @@ class FillEntry {
       'notes': notes,
       'syncedAt': syncedAt?.toIso8601String(),
       'deviceId': deviceId,
+      'vehicleId': vehicleId,
     };
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/fill_entry.dart';
+import '../models/vehicle.dart';
 import '../services/settings_service.dart';
 import '../data/database.dart';
 import '../data/dynamodb_service.dart';
@@ -42,11 +43,16 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
   String _currency = 'USD';
   String _distanceUnit = 'km';
   String _capacityUnit = 'L';
+  String _selectedVehicleId = ''; // Add vehicle selection
+
+  List<Vehicle> _vehicles = [];
+  bool _isLoadingVehicles = false;
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    _loadVehicles();
   }
 
   Future<void> _loadSettings() async {
@@ -55,6 +61,35 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
       _distanceUnit = widget.settingsService.getDistanceUnit();
       _capacityUnit = widget.settingsService.getCapacityUnit();
     });
+  }
+
+  Future<void> _loadVehicles() async {
+    setState(() {
+      _isLoadingVehicles = true;
+    });
+
+    try {
+      final vehicles = await widget.database.getAllVehicles();
+      setState(() {
+        _vehicles = vehicles;
+        // Default to first vehicle or set to empty if no vehicles
+        if (vehicles.isNotEmpty) {
+          _selectedVehicleId = vehicles.first.id;
+        } else {
+          _selectedVehicleId = '';
+        }
+      });
+    } catch (e) {
+      // Handle error
+      setState(() {
+        _vehicles = [];
+        _selectedVehicleId = '';
+      });
+    } finally {
+      setState(() {
+        _isLoadingVehicles = false;
+      });
+    }
   }
 
   @override
@@ -88,6 +123,17 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
+                'Vehicle',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+              _buildVehicleSelector(),
+              const SizedBox(height: 20),
+
+              const Text(
                 'Fuel Type',
                 style: TextStyle(
                   fontSize: 18,
@@ -119,6 +165,44 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildVehicleSelector() {
+    if (_isLoadingVehicles) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_vehicles.isEmpty) {
+      return const Text(
+        'No vehicles found. Please add a vehicle in settings.',
+        style: TextStyle(color: Colors.grey),
+      );
+    }
+
+    return DropdownButtonFormField<String>(
+      value: _selectedVehicleId,
+      decoration: const InputDecoration(
+        labelText: 'Select Vehicle',
+        border: OutlineInputBorder(),
+      ),
+      items: _vehicles.map((vehicle) {
+        return DropdownMenuItem<String>(
+          value: vehicle.id,
+          child: Text(vehicle.name),
+        );
+      }).toList(),
+      onChanged: (value) {
+        setState(() {
+          _selectedVehicleId = value!;
+        });
+      },
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Please select a vehicle';
+        }
+        return null;
+      },
     );
   }
 
@@ -236,6 +320,14 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
 
   void _submitForm() {
     if (_formKey.currentState!.validate()) {
+      // Check if vehicle is selected
+      if (_selectedVehicleId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a vehicle')),
+        );
+        return;
+      }
+
       // Create the fill entry
       final entry = FillEntry(
         id: const Uuid().v4(),
@@ -253,6 +345,7 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
         notes: _notesController.text.isNotEmpty ? _notesController.text : null,
         syncedAt: null,
         deviceId: widget.settingsService.getDeviceId(),
+        vehicleId: _selectedVehicleId, // Include vehicle ID
       );
 
       // Save to database

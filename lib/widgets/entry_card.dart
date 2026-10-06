@@ -60,6 +60,15 @@ class EntryCard extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            // Display vehicle information if available
+            Text(
+              'Vehicle: ${entry.vehicleId.substring(0, 6)}...', // Show a portion of the vehicle ID
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.grey,
+              ),
+            ),
             if (entry.notes != null && entry.notes!.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(

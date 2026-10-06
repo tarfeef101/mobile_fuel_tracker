@@ -6,7 +6,7 @@ import '../services/settings_service.dart';
 import '../data/database.dart';
 import '../data/dynamodb_service.dart';
 import '../services/sync_service.dart';
-import '../widgets/entry_card.dart';
+import '../widgets/entry_card_with_vehicle.dart';
 import 'add_entry_screen.dart';
 import 'settings_screen.dart';
 
@@ -109,10 +109,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => SettingsScreen(
-                    onBack: () {
-                      Navigator.of(context).pop();
-                    },
-                    onSettingsChanged: _loadFillEntries,
+                    settingsService: widget.settingsService,
+                    database: widget.database,
                   ),
                 ),
               );
@@ -203,9 +201,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       itemCount: _fillEntries.length,
       itemBuilder: (context, index) {
         final entry = _fillEntries[index];
-        return EntryCard(
+        return EntryCardWithVehicle(
           entry: entry,
           onDelete: _deleteEntry,
+          database: widget.database,
         );
       },
     );
