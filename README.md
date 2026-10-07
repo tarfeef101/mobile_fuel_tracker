@@ -1,60 +1,55 @@
-# Fuel Tracker - Fuel Tracking App
+# Fuel Tracker App
 
-A comprehensive fuel tracking application for Android with local encryption and optional AWS backup.
+A fuel tracking application for Android with local encryption and optional AWS backup.
 
 ## Features
 
 - Local database encryption with SQLCipher
 - AWS DynamoDB cloud synchronization
-- Tire size offset calculations for accurate mileage
-- Modern Flutter UI with Material 3 design
+- Tire size offset calculations
+- Modern Flutter UI with Material 3
 - Android v2 embedding support
-- Secure credential storage
-- Complete fuel entry management
-
-## Development Setup
-
-This project uses [mise](https://mise.jdx.dev/) for managing development dependencies. All required dependencies including Flutter, Java, and Android SDK are configured in the `mise.toml` file.
-
-1. Install mise (https://mise.jdx.dev/)
-2. Run `mise install` to install all dependencies
-3. Run `flutter pub get` to install Dart packages
-4. Run `flutter run` to start the app
 
 ## Build Instructions
 
-To build the APK:
-1. Ensure mise dependencies are installed
-2. Run `flutter build apk --release --build-number=1`
+### Prerequisites
+- mise (for environment management)
+- Android SDK
+
+### Building APK
+
+To build the APK in a headless environment:
+
+1. Install dependencies with mise:
+   ```bash
+   mise install
+   ```
+
+2. Set up the environment:
+   ```bash
+   export PATH="$HOME/.local/share/mise/installs/flutter/3.47.6/bin:$PATH"
+   export JAVA_HOME="$HOME/.local/share/mise/installs/java/17"
+   export PATH="$HOME/.local/share/mise/installs/java/17/bin:$PATH"
+   ```
+
+3. Build the APK:
+   ```bash
+   flutter build apk --release --build-number=1
+   ```
+
+The APK will be generated at `build/app/outputs/flutter_apk/app-release.apk`.
 
 ## Project Structure
 
-```
-.
-├── lib/                    # Main application code
-├── android/                # Android configuration
-├── test/                   # Test files
-├── pubspec.yaml            # Dependencies and configuration
-├── mise.toml               # Dependency management
-├── README.md               # This file
-└── CLAUDE.md               # Project-specific instructions
-```
+- `lib/` - Flutter application code
+- `android/` - Android-specific code and configuration
+- `lib/data/` - Database and data services
+- `lib/screens/` - UI screens
+- `lib/widgets/` - Reusable UI components
 
-## Dependencies
+## Technology Stack
 
-This project uses mise for managing all development dependencies:
-- Flutter SDK >=3.3.0 <4.0.0
-- Java 17 (for Android builds)
-- Android SDK 34
-
-All dependencies are automatically managed by mise. See `mise.toml` for details.
-
-## Security
-
-- All AWS credentials stored securely using flutter_secure_storage
-- Local database encryption with SQLCipher
-- HTTPS communication with proper authentication
-
-## License
-
-This project is licensed under the MIT License.
+- Flutter 3.47.6
+- Dart 3.13.5
+- SQLCipher for local encryption
+- AWS DynamoDB for cloud backup
