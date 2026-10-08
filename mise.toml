@@ -1,3 +1,26 @@
 [tools]
 flutter = "3.47.6"
-java = "17"
+java = "17.0.2"
+android-sdk = "23.0"
+
+# Google deprecated sdkmanager in favor of the `android` CLI (no license
+# prompts since cmdline-tools 23.0), so use it directly.
+[tasks.android-setup]
+description = "Provision Android SDK packages (idempotent)"
+run = """
+set -euo pipefail
+android --no-metrics sdk install platform-tools "platforms;android-36" "build-tools;36.0.0"
+"""
+
+[tasks.build-apk]
+description = "Build the release APK"
+depends = ["android-setup"]
+run = """
+set -euo pipefail
+flutter pub get
+flutter build apk --release
+"""
+
+[tasks.test]
+description = "Run Flutter unit tests"
+run = "flutter test"

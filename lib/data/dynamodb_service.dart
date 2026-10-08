@@ -2,13 +2,12 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
-import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import '../models/fill_entry.dart';
 import '../services/settings_service.dart';
+import 'database.dart';
 
 class DynamoDBService {
-  static const String _defaultRegion = 'us-east-1';
   static const String _defaultService = 'dynamodb';
 
   final SettingsService _settingsService;
@@ -483,6 +482,7 @@ class DynamoDBService {
       notes: item['notes'],
       syncedAt: item['syncedAt'] != null ? DateTime.parse(item['syncedAt']) : null,
       deviceId: item['deviceId'],
+      vehicleId: item['vehicleId'] as String? ?? '',
     );
   }
 
@@ -507,8 +507,8 @@ class DynamoDBService {
   }
 
   /// Close the HTTP client
-  Future<void> close() async {
-    await _httpClient.close();
+  void close() {
+    _httpClient.close();
   }
 }
 

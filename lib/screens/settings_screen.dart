@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/settings_service.dart';
 import '../data/database.dart';
-import '../models/vehicle.dart';
 import 'vehicle_list_screen.dart';
 
 class SettingsScreen extends StatefulWidget {

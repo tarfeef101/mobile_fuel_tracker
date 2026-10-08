@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
+
 import '../models/vehicle.dart';
 import '../data/database.dart';
 import '../services/settings_service.dart';

@@ -1,6 +1,3 @@
-import 'package:uuid/uuid.dart';
-import 'package:intl/intl.dart';
-
 class Vehicle {
   final String id;
   final String name;

@@ -1,6 +1,3 @@
-import 'package:uuid/uuid.dart';
-import 'package:intl/intl.dart';
-
 class FillEntry {
   final String id;
   final DateTime timestamp;
@@ -99,6 +96,7 @@ class FillEntry {
     String? notes,
     DateTime? syncedAt,
     String? deviceId,
+    String? vehicleId,
   }) {
     return FillEntry(
       id: id ?? this.id,
@@ -116,6 +114,7 @@ class FillEntry {
       notes: notes ?? this.notes,
       syncedAt: syncedAt ?? this.syncedAt,
       deviceId: deviceId ?? this.deviceId,
+      vehicleId: vehicleId ?? this.vehicleId,
     );
   }
 
@@ -141,7 +140,7 @@ class FillEntry {
 
   // Calculate cost per distance unit
   double? getCostPerDistance() {
-    if (totalCost != null && odometer != null) {
+    if (odometer != null) {
       // For this implementation, we'll just return a placeholder
       // Actual implementation would require previous entry to calculate distance
       return null;

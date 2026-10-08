@@ -1,214 +1,240 @@
+import 'dart:io';
+import 'dart:math';
+
 import 'package:drift/drift.dart';
-import 'package:drift_sqlcipher/drift_sqlcipher.dart';
-import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as path;
+import 'package:drift/native.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:uuid/uuid.dart';
-import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../models/fill_entry.dart';
 import '../models/vehicle.dart';
 
-// Define the database tables
+part 'database.g.dart';
+
+// Generated data classes are renamed so they don't clash with the
+// hand-written FillEntry/Vehicle models used across the app.
+@DataClassName('FillEntryRow')
 class FillEntries extends Table {
   TextColumn get id => text()();
   DateTimeColumn get timestamp => dateTime()();
   TextColumn get fuelType => text()();
-  DoubleColumn get odometer => double_()();
-  DoubleColumn get fuelAmount => double_()();
-  DoubleColumn get batteryLevelBefore => double_()();
-  DoubleColumn get batteryLevelAfter => double_()();
-  DoubleColumn get energyAdded => double_()();
-  DoubleColumn get totalCost => double_()();
+  RealColumn get odometer => real().nullable()();
+  RealColumn get fuelAmount => real().nullable()();
+  RealColumn get batteryLevelBefore => real().nullable()();
+  RealColumn get batteryLevelAfter => real().nullable()();
+  RealColumn get energyAdded => real().nullable()();
+  RealColumn get totalCost => real()();
   TextColumn get currency => text()();
-  TextColumn get distanceUnit => text()();
-  TextColumn get capacityUnit => text()();
-  TextColumn get notes => text()();
-  DateTimeColumn get syncedAt => dateTime()();
+  TextColumn get distanceUnit => text().nullable()();
+  TextColumn get capacityUnit => text().nullable()();
+  TextColumn get notes => text().nullable()();
+  DateTimeColumn get syncedAt => dateTime().nullable()();
   TextColumn get deviceId => text()();
-  TextColumn get vehicleId => text()(); // Foreign key to Vehicle table
+  TextColumn get vehicleId => text()();
 
   @override
   Set<Column> get primaryKey => {id};
 }
 
+@DataClassName('VehicleRow')
 class Vehicles extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
   TextColumn get fuelType => text()();
-  TextColumn get make => text()();
-  TextColumn get model => text()();
-  IntColumn get year => int_()();
-  TextColumn get vin => text()();
-  TextColumn get licensePlate => text()();
+  TextColumn get make => text().nullable()();
+  TextColumn get model => text().nullable()();
+  IntColumn get year => integer().nullable()();
+  TextColumn get vin => text().nullable()();
+  TextColumn get licensePlate => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
-  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
 }
 
-// Database class for handling operations
+@DriftDatabase(tables: [FillEntries, Vehicles])
 class DatabaseService extends _$DatabaseService {
+  DatabaseService(super.executor);
+
   static Future<DatabaseService> create() async {
-    final db = DatabaseService();
-    await db.open();
-    return db;
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File(p.join(dir.path, 'fuel_tracker.db'));
+    final key = await _getOrCreateKey();
+    return DatabaseService(
+      NativeDatabase(
+        file,
+        // SQLCipher must be unlocked before any other statement runs.
+        setup: (db) => db.execute("PRAGMA key = '$key';"),
+      ),
+    );
   }
 
-  DatabaseService._internal() : super(_openDatabase());
-
-  factory DatabaseService() {
-    return DatabaseService._internal();
+  static Future<String> _getOrCreateKey() async {
+    const storage = FlutterSecureStorage();
+    const keyName = 'sqlcipher_key';
+    final existing = await storage.read(key: keyName);
+    if (existing != null && existing.isNotEmpty) {
+      return existing;
+    }
+    final random = Random.secure();
+    final bytes =
+        Uint8List.fromList(List.generate(32, (_) => random.nextInt(256)));
+    final key = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    await storage.write(key: keyName, value: key);
+    return key;
   }
 
-  static Database _openDatabase() {
-    // Initialize SQLite3 for Flutter
-    sqlite3FlutterLibsInit();
+  @override
+  int get schemaVersion => 1;
 
-    // Get the database file path
-    final dbPath = 'fuel_tracker.db';
-
-    // Create the database with encryption (using SQLCipher)
-    final db = Database.withPath(dbPath);
-
-    return db;
+  FillEntry _entryFromRow(FillEntryRow row) {
+    return FillEntry(
+      id: row.id,
+      timestamp: row.timestamp,
+      fuelType: row.fuelType,
+      odometer: row.odometer,
+      fuelAmount: row.fuelAmount,
+      batteryLevelBefore: row.batteryLevelBefore,
+      batteryLevelAfter: row.batteryLevelAfter,
+      energyAdded: row.energyAdded,
+      totalCost: row.totalCost,
+      currency: row.currency,
+      distanceUnit: row.distanceUnit,
+      capacityUnit: row.capacityUnit,
+      notes: row.notes,
+      syncedAt: row.syncedAt,
+      deviceId: row.deviceId,
+      vehicleId: row.vehicleId,
+    );
   }
 
-  // Insert a new fill entry
+  Vehicle _vehicleFromRow(VehicleRow row) {
+    return Vehicle(
+      id: row.id,
+      name: row.name,
+      fuelType: row.fuelType,
+      make: row.make,
+      model: row.model,
+      year: row.year,
+      vin: row.vin,
+      licensePlate: row.licensePlate,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    );
+  }
+
+  FillEntriesCompanion _entryCompanion(FillEntry entry) {
+    return FillEntriesCompanion(
+      id: Value(entry.id),
+      timestamp: Value(entry.timestamp),
+      fuelType: Value(entry.fuelType),
+      odometer: Value(entry.odometer),
+      fuelAmount: Value(entry.fuelAmount),
+      batteryLevelBefore: Value(entry.batteryLevelBefore),
+      batteryLevelAfter: Value(entry.batteryLevelAfter),
+      energyAdded: Value(entry.energyAdded),
+      totalCost: Value(entry.totalCost),
+      currency: Value(entry.currency),
+      distanceUnit: Value(entry.distanceUnit),
+      capacityUnit: Value(entry.capacityUnit),
+      notes: Value(entry.notes),
+      syncedAt: Value(entry.syncedAt),
+      deviceId: Value(entry.deviceId),
+      vehicleId: Value(entry.vehicleId),
+    );
+  }
+
   Future<FillEntry> insertFillEntry(FillEntry entry) async {
-    final result = await into(fillEntries).insertOnConflict(
-      FillEntriesCompanion(
-        id: Value(entry.id),
-        timestamp: Value(entry.timestamp),
-        fuelType: Value(entry.fuelType),
-        odometer: Value(entry.odometer),
-        fuelAmount: Value(entry.fuelAmount),
-        batteryLevelBefore: Value(entry.batteryLevelBefore),
-        batteryLevelAfter: Value(entry.batteryLevelAfter),
-        energyAdded: Value(entry.energyAdded),
-        totalCost: Value(entry.totalCost),
-        currency: Value(entry.currency),
-        distanceUnit: Value(entry.distanceUnit),
-        capacityUnit: Value(entry.capacityUnit),
-        notes: Value(entry.notes),
-        syncedAt: Value(entry.syncedAt),
-        deviceId: Value(entry.deviceId),
-        vehicleId: Value(entry.vehicleId),
-      ),
-    );
-
-    return result;
+    await into(fillEntries).insertOnConflictUpdate(_entryCompanion(entry));
+    return entry;
   }
 
-  // Get all fill entries
   Future<List<FillEntry>> getAllFillEntries() async {
-    return select(fillEntries).get();
+    final rows = await select(fillEntries).get();
+    return rows.map(_entryFromRow).toList();
   }
 
-  // Get fill entries with pagination
   Future<List<FillEntry>> getFillEntriesPaginated(int limit, int offset) async {
-    return select(fillEntries).limit(limit, offset: offset).get();
+    final rows = await (select(fillEntries)..limit(limit, offset: offset)).get();
+    return rows.map(_entryFromRow).toList();
   }
 
-  // Get fill entries by fuel type
   Future<List<FillEntry>> getFillEntriesByFuelType(String fuelType) async {
-    return (select(fillEntries)..where((t) => t.fuelType.equals(fuelType))).get();
+    final rows =
+        await (select(fillEntries)..where((t) => t.fuelType.equals(fuelType)))
+            .get();
+    return rows.map(_entryFromRow).toList();
   }
 
-  // Get fill entries by date range
-  Future<List<FillEntry>> getFillEntriesByDateRange(DateTime start, DateTime end) async {
-    return (select(fillEntries)..where((t) => t.timestamp.isBetween(start, end))).get();
+  Future<List<FillEntry>> getFillEntriesByDateRange(
+      DateTime start, DateTime end) async {
+    final rows = await (select(fillEntries)
+          ..where((t) => t.timestamp.isBetweenValues(start, end)))
+        .get();
+    return rows.map(_entryFromRow).toList();
   }
 
-  // Update a fill entry
   Future<void> updateFillEntry(FillEntry entry) async {
-    await (update(fillEntries)..where((t) => t.id.equals(entry.id))).write(
-      FillEntriesCompanion(
-        timestamp: Value(entry.timestamp),
-        fuelType: Value(entry.fuelType),
-        odometer: Value(entry.odometer),
-        fuelAmount: Value(entry.fuelAmount),
-        batteryLevelBefore: Value(entry.batteryLevelBefore),
-        batteryLevelAfter: Value(entry.batteryLevelAfter),
-        energyAdded: Value(entry.energyAdded),
-        totalCost: Value(entry.totalCost),
-        currency: Value(entry.currency),
-        distanceUnit: Value(entry.distanceUnit),
-        capacityUnit: Value(entry.capacityUnit),
-        notes: Value(entry.notes),
-        syncedAt: Value(entry.syncedAt),
-        deviceId: Value(entry.deviceId),
-        vehicleId: Value(entry.vehicleId),
-      ),
-    );
+    await (update(fillEntries)..where((t) => t.id.equals(entry.id)))
+        .write(_entryCompanion(entry));
   }
 
-  // Delete a fill entry
   Future<void> deleteFillEntry(String id) async {
     await (delete(fillEntries)..where((t) => t.id.equals(id))).go();
   }
 
-  // Get total cost for a given time period
   Future<double> getTotalCost(DateTime start, DateTime end) async {
-    final result = await (select(fillEntries)
-      ..where((t) => t.timestamp.isBetween(start, end))
-      ..map((row) => row.totalCost))
-      .get();
-
-    return result.fold(0.0, (sum, cost) => sum + cost);
+    final costs = await (select(fillEntries)
+          ..where((t) => t.timestamp.isBetweenValues(start, end)))
+        .map((row) => row.totalCost)
+        .get();
+    return costs.fold<double>(0.0, (sum, cost) => sum + cost);
   }
 
-  // Get total fuel amount for a given time period
   Future<double> getTotalFuelAmount(DateTime start, DateTime end) async {
-    final result = await (select(fillEntries)
-      ..where((t) => t.timestamp.isBetween(start, end) && t.fuelAmount.isNotNull())
-      ..map((row) => row.fuelAmount!))
-      .get();
-
-    return result.fold(0.0, (sum, amount) => sum + amount);
+    final amounts = await (select(fillEntries)
+          ..where((t) =>
+              t.timestamp.isBetweenValues(start, end) & t.fuelAmount.isNotNull()))
+        .map((row) => row.fuelAmount!)
+        .get();
+    return amounts.fold<double>(0.0, (sum, amount) => sum + amount);
   }
 
-  // Get average cost per fill
   Future<double> getAverageCostPerFill() async {
-    final result = await (select(fillEntries)
-      ..map((row) => row.totalCost))
-      .get();
-
-    if (result.isEmpty) return 0.0;
-    return result.fold(0.0, (sum, cost) => sum + cost) / result.length;
+    final costs = await select(fillEntries).map((row) => row.totalCost).get();
+    if (costs.isEmpty) return 0.0;
+    return costs.fold(0.0, (sum, cost) => sum + cost) / costs.length;
   }
 
-  // Get most recent fill entry
   Future<FillEntry?> getMostRecentFillEntry() async {
-    final result = await (select(fillEntries)..orderBy([(t) => OrderingTerm(expression: t.timestamp, mode: OrderingMode.desc)]).limit(1)).get();
-    return result.isEmpty ? null : result.first;
+    final rows = await (select(fillEntries)
+          ..orderBy([(t) => OrderingTerm(expression: t.timestamp, mode: OrderingMode.desc)])
+          ..limit(1))
+        .get();
+    return rows.isEmpty ? null : _entryFromRow(rows.first);
   }
 
-  // Get count of fill entries
   Future<int> getFillEntryCount() async {
-    final result = await (select(fillEntries)..map((row) => 1)).get();
-    return result.length;
+    final result =
+        await (selectOnly(fillEntries)..addColumns([countAll()])).getSingle();
+    return result.read(countAll()) ?? 0;
   }
 
-  // Mark entry as synced
   Future<void> markEntryAsSynced(String id, DateTime syncedAt) async {
-    await (update(fillEntries)..where((t) => t.id.equals(id))).write(
-      FillEntriesCompanion(
-        syncedAt: Value(syncedAt),
-      ),
-    );
+    await (update(fillEntries)..where((t) => t.id.equals(id)))
+        .write(FillEntriesCompanion(syncedAt: Value(syncedAt)));
   }
 
-  // Get unsynced entries
   Future<List<FillEntry>> getUnsyncedEntries() async {
-    return (select(fillEntries)..where((t) => t.syncedAt.isNull())).get();
+    final rows =
+        await (select(fillEntries)..where((t) => t.syncedAt.isNull())).get();
+    return rows.map(_entryFromRow).toList();
   }
 
-  // Insert a new vehicle
   Future<Vehicle> insertVehicle(Vehicle vehicle) async {
-    final result = await into(vehicles).insertOnConflict(
+    await into(vehicles).insertOnConflictUpdate(
       VehiclesCompanion(
         id: Value(vehicle.id),
         name: Value(vehicle.name),
@@ -222,22 +248,20 @@ class DatabaseService extends _$DatabaseService {
         updatedAt: Value(vehicle.updatedAt),
       ),
     );
-
-    return result;
+    return vehicle;
   }
 
-  // Get all vehicles
   Future<List<Vehicle>> getAllVehicles() async {
-    return select(vehicles).get();
+    final rows = await select(vehicles).get();
+    return rows.map(_vehicleFromRow).toList();
   }
 
-  // Get a vehicle by ID
   Future<Vehicle?> getVehicleById(String id) async {
-    final result = await (select(vehicles)..where((t) => t.id.equals(id))).get();
-    return result.isEmpty ? null : result.first;
+    final rows =
+        await (select(vehicles)..where((t) => t.id.equals(id))).get();
+    return rows.isEmpty ? null : _vehicleFromRow(rows.first);
   }
 
-  // Update a vehicle
   Future<void> updateVehicle(Vehicle vehicle) async {
     await (update(vehicles)..where((t) => t.id.equals(vehicle.id))).write(
       VehiclesCompanion(
@@ -253,41 +277,18 @@ class DatabaseService extends _$DatabaseService {
     );
   }
 
-  // Delete a vehicle
   Future<void> deleteVehicle(String id) async {
     await (delete(vehicles)..where((t) => t.id.equals(id))).go();
   }
 
-  // Get vehicles with pagination
   Future<List<Vehicle>> getVehiclesPaginated(int limit, int offset) async {
-    return select(vehicles).limit(limit, offset: offset).get();
+    final rows = await (select(vehicles)..limit(limit, offset: offset)).get();
+    return rows.map(_vehicleFromRow).toList();
   }
 
-  // Get vehicle by name
   Future<Vehicle?> getVehicleByName(String name) async {
-    final result = await (select(vehicles)..where((t) => t.name.equals(name))).get();
-    return result.isEmpty ? null : result.first;
-  }
-}
-
-// Generated database class
-class _$DatabaseService extends Database {
-  _$DatabaseService._internal(super.delegate);
-
-  factory _$DatabaseService() {
-    return _$DatabaseService._internal(_openDatabase());
-  }
-
-  static Database _openDatabase() {
-    // Initialize SQLite3 for Flutter
-    sqlite3FlutterLibsInit();
-
-    // Get the database file path
-    final dbPath = 'fuel_tracker.db';
-
-    // Create the database with encryption
-    final db = Database.withPath(dbPath);
-
-    return db;
+    final rows =
+        await (select(vehicles)..where((t) => t.name.equals(name))).get();
+    return rows.isEmpty ? null : _vehicleFromRow(rows.first);
   }
 }

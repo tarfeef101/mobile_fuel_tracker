@@ -13,6 +13,7 @@ void main() {
         totalCost: 50.0,
         currency: 'USD',
         deviceId: 'device-123',
+        vehicleId: 'vehicle-123',
       );
 
       expect(entry.id, 'test-id-123');
@@ -35,6 +36,7 @@ void main() {
         'totalCost': 25.0,
         'currency': 'EUR',
         'deviceId': 'device-456',
+        'vehicleId': 'vehicle-456',
       };
 
       final entry = FillEntry.fromJson(json);
@@ -62,6 +64,7 @@ void main() {
         totalCost: 35.0,
         currency: 'GBP',
         deviceId: 'device-789',
+        vehicleId: 'vehicle-789',
       );
 
       final json = entry.toJson();

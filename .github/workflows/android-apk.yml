@@ -1,0 +1,34 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: jdx/mise-action@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trust and install mise tools
+        run: |
+          mise trust
+          mise install
+
+      - name: Run unit tests
+        run: mise run test
+
+      - name: Build release APK
+        run: mise run build-apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuel-tracker-apk
+          path: build/app/outputs/flutter-apk/app-release.apk

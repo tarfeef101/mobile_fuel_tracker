@@ -97,7 +97,7 @@ class EntryCard extends StatelessWidget {
 }
 
 extension on String {
-  String capitalizeFirst {
+  String get capitalizeFirst {
     if (isEmpty) return this;
     return '${this[0].toUpperCase()}${substring(1).toLowerCase()}';
   }

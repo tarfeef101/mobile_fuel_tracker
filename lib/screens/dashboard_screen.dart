@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../models/fill_entry.dart';
 import '../services/settings_service.dart';
@@ -218,12 +217,5 @@ class _DashboardScreenState extends State<DashboardScreen> {
         SnackBar(content: Text('Error deleting entry: $error')),
       );
     });
-  }
-}
-
-extension on String {
-  String capitalizeFirst {
-    if (isEmpty) return this;
-    return '${this[0].toUpperCase()}${substring(1).toLowerCase()}';
   }
 }
