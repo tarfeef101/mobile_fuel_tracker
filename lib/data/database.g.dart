@@ -1025,6 +1025,28 @@ class $VehiclesTable extends Vehicles
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _tireSizeStockMeta = const VerificationMeta(
+    'tireSizeStock',
+  );
+  @override
+  late final GeneratedColumn<String> tireSizeStock = GeneratedColumn<String>(
+    'tire_size_stock',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _tireSizeRunningMeta = const VerificationMeta(
+    'tireSizeRunning',
+  );
+  @override
+  late final GeneratedColumn<String> tireSizeRunning = GeneratedColumn<String>(
+    'tire_size_running',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1057,6 +1079,8 @@ class $VehiclesTable extends Vehicles
     year,
     vin,
     licensePlate,
+    tireSizeStock,
+    tireSizeRunning,
     createdAt,
     updatedAt,
   ];
@@ -1126,6 +1150,24 @@ class $VehiclesTable extends Vehicles
         ),
       );
     }
+    if (data.containsKey('tire_size_stock')) {
+      context.handle(
+        _tireSizeStockMeta,
+        tireSizeStock.isAcceptableOrUnknown(
+          data['tire_size_stock']!,
+          _tireSizeStockMeta,
+        ),
+      );
+    }
+    if (data.containsKey('tire_size_running')) {
+      context.handle(
+        _tireSizeRunningMeta,
+        tireSizeRunning.isAcceptableOrUnknown(
+          data['tire_size_running']!,
+          _tireSizeRunningMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -1181,6 +1223,14 @@ class $VehiclesTable extends Vehicles
         DriftSqlType.string,
         data['${effectivePrefix}license_plate'],
       ),
+      tireSizeStock: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tire_size_stock'],
+      ),
+      tireSizeRunning: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tire_size_running'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -1207,6 +1257,8 @@ class VehicleRow extends DataClass implements Insertable<VehicleRow> {
   final int? year;
   final String? vin;
   final String? licensePlate;
+  final String? tireSizeStock;
+  final String? tireSizeRunning;
   final DateTime createdAt;
   final DateTime? updatedAt;
   const VehicleRow({
@@ -1218,6 +1270,8 @@ class VehicleRow extends DataClass implements Insertable<VehicleRow> {
     this.year,
     this.vin,
     this.licensePlate,
+    this.tireSizeStock,
+    this.tireSizeRunning,
     required this.createdAt,
     this.updatedAt,
   });
@@ -1242,6 +1296,12 @@ class VehicleRow extends DataClass implements Insertable<VehicleRow> {
     if (!nullToAbsent || licensePlate != null) {
       map['license_plate'] = Variable<String>(licensePlate);
     }
+    if (!nullToAbsent || tireSizeStock != null) {
+      map['tire_size_stock'] = Variable<String>(tireSizeStock);
+    }
+    if (!nullToAbsent || tireSizeRunning != null) {
+      map['tire_size_running'] = Variable<String>(tireSizeRunning);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     if (!nullToAbsent || updatedAt != null) {
       map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -1263,6 +1323,12 @@ class VehicleRow extends DataClass implements Insertable<VehicleRow> {
       licensePlate: licensePlate == null && nullToAbsent
           ? const Value.absent()
           : Value(licensePlate),
+      tireSizeStock: tireSizeStock == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tireSizeStock),
+      tireSizeRunning: tireSizeRunning == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tireSizeRunning),
       createdAt: Value(createdAt),
       updatedAt: updatedAt == null && nullToAbsent
           ? const Value.absent()
@@ -1284,6 +1350,8 @@ class VehicleRow extends DataClass implements Insertable<VehicleRow> {
       year: serializer.fromJson<int?>(json['year']),
       vin: serializer.fromJson<String?>(json['vin']),
       licensePlate: serializer.fromJson<String?>(json['licensePlate']),
+      tireSizeStock: serializer.fromJson<String?>(json['tireSizeStock']),
+      tireSizeRunning: serializer.fromJson<String?>(json['tireSizeRunning']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
     );
@@ -1300,6 +1368,8 @@ class VehicleRow extends DataClass implements Insertable<VehicleRow> {
       'year': serializer.toJson<int?>(year),
       'vin': serializer.toJson<String?>(vin),
       'licensePlate': serializer.toJson<String?>(licensePlate),
+      'tireSizeStock': serializer.toJson<String?>(tireSizeStock),
+      'tireSizeRunning': serializer.toJson<String?>(tireSizeRunning),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime?>(updatedAt),
     };
@@ -1314,6 +1384,8 @@ class VehicleRow extends DataClass implements Insertable<VehicleRow> {
     Value<int?> year = const Value.absent(),
     Value<String?> vin = const Value.absent(),
     Value<String?> licensePlate = const Value.absent(),
+    Value<String?> tireSizeStock = const Value.absent(),
+    Value<String?> tireSizeRunning = const Value.absent(),
     DateTime? createdAt,
     Value<DateTime?> updatedAt = const Value.absent(),
   }) => VehicleRow(
@@ -1325,6 +1397,12 @@ class VehicleRow extends DataClass implements Insertable<VehicleRow> {
     year: year.present ? year.value : this.year,
     vin: vin.present ? vin.value : this.vin,
     licensePlate: licensePlate.present ? licensePlate.value : this.licensePlate,
+    tireSizeStock: tireSizeStock.present
+        ? tireSizeStock.value
+        : this.tireSizeStock,
+    tireSizeRunning: tireSizeRunning.present
+        ? tireSizeRunning.value
+        : this.tireSizeRunning,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
   );
@@ -1340,6 +1418,12 @@ class VehicleRow extends DataClass implements Insertable<VehicleRow> {
       licensePlate: data.licensePlate.present
           ? data.licensePlate.value
           : this.licensePlate,
+      tireSizeStock: data.tireSizeStock.present
+          ? data.tireSizeStock.value
+          : this.tireSizeStock,
+      tireSizeRunning: data.tireSizeRunning.present
+          ? data.tireSizeRunning.value
+          : this.tireSizeRunning,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -1356,6 +1440,8 @@ class VehicleRow extends DataClass implements Insertable<VehicleRow> {
           ..write('year: $year, ')
           ..write('vin: $vin, ')
           ..write('licensePlate: $licensePlate, ')
+          ..write('tireSizeStock: $tireSizeStock, ')
+          ..write('tireSizeRunning: $tireSizeRunning, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -1372,6 +1458,8 @@ class VehicleRow extends DataClass implements Insertable<VehicleRow> {
     year,
     vin,
     licensePlate,
+    tireSizeStock,
+    tireSizeRunning,
     createdAt,
     updatedAt,
   );
@@ -1387,6 +1475,8 @@ class VehicleRow extends DataClass implements Insertable<VehicleRow> {
           other.year == this.year &&
           other.vin == this.vin &&
           other.licensePlate == this.licensePlate &&
+          other.tireSizeStock == this.tireSizeStock &&
+          other.tireSizeRunning == this.tireSizeRunning &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -1400,6 +1490,8 @@ class VehiclesCompanion extends UpdateCompanion<VehicleRow> {
   final Value<int?> year;
   final Value<String?> vin;
   final Value<String?> licensePlate;
+  final Value<String?> tireSizeStock;
+  final Value<String?> tireSizeRunning;
   final Value<DateTime> createdAt;
   final Value<DateTime?> updatedAt;
   final Value<int> rowid;
@@ -1412,6 +1504,8 @@ class VehiclesCompanion extends UpdateCompanion<VehicleRow> {
     this.year = const Value.absent(),
     this.vin = const Value.absent(),
     this.licensePlate = const Value.absent(),
+    this.tireSizeStock = const Value.absent(),
+    this.tireSizeRunning = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1425,6 +1519,8 @@ class VehiclesCompanion extends UpdateCompanion<VehicleRow> {
     this.year = const Value.absent(),
     this.vin = const Value.absent(),
     this.licensePlate = const Value.absent(),
+    this.tireSizeStock = const Value.absent(),
+    this.tireSizeRunning = const Value.absent(),
     required DateTime createdAt,
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1441,6 +1537,8 @@ class VehiclesCompanion extends UpdateCompanion<VehicleRow> {
     Expression<int>? year,
     Expression<String>? vin,
     Expression<String>? licensePlate,
+    Expression<String>? tireSizeStock,
+    Expression<String>? tireSizeRunning,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -1454,6 +1552,8 @@ class VehiclesCompanion extends UpdateCompanion<VehicleRow> {
       if (year != null) 'year': year,
       if (vin != null) 'vin': vin,
       if (licensePlate != null) 'license_plate': licensePlate,
+      if (tireSizeStock != null) 'tire_size_stock': tireSizeStock,
+      if (tireSizeRunning != null) 'tire_size_running': tireSizeRunning,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -1469,6 +1569,8 @@ class VehiclesCompanion extends UpdateCompanion<VehicleRow> {
     Value<int?>? year,
     Value<String?>? vin,
     Value<String?>? licensePlate,
+    Value<String?>? tireSizeStock,
+    Value<String?>? tireSizeRunning,
     Value<DateTime>? createdAt,
     Value<DateTime?>? updatedAt,
     Value<int>? rowid,
@@ -1482,6 +1584,8 @@ class VehiclesCompanion extends UpdateCompanion<VehicleRow> {
       year: year ?? this.year,
       vin: vin ?? this.vin,
       licensePlate: licensePlate ?? this.licensePlate,
+      tireSizeStock: tireSizeStock ?? this.tireSizeStock,
+      tireSizeRunning: tireSizeRunning ?? this.tireSizeRunning,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -1515,6 +1619,12 @@ class VehiclesCompanion extends UpdateCompanion<VehicleRow> {
     if (licensePlate.present) {
       map['license_plate'] = Variable<String>(licensePlate.value);
     }
+    if (tireSizeStock.present) {
+      map['tire_size_stock'] = Variable<String>(tireSizeStock.value);
+    }
+    if (tireSizeRunning.present) {
+      map['tire_size_running'] = Variable<String>(tireSizeRunning.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -1538,8 +1648,224 @@ class VehiclesCompanion extends UpdateCompanion<VehicleRow> {
           ..write('year: $year, ')
           ..write('vin: $vin, ')
           ..write('licensePlate: $licensePlate, ')
+          ..write('tireSizeStock: $tireSizeStock, ')
+          ..write('tireSizeRunning: $tireSizeRunning, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PendingDeletionsTable extends PendingDeletions
+    with TableInfo<$PendingDeletionsTable, PendingDeletionRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PendingDeletionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, deletedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'pending_deletions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PendingDeletionRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deletedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PendingDeletionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PendingDeletionRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PendingDeletionsTable createAlias(String alias) {
+    return $PendingDeletionsTable(attachedDatabase, alias);
+  }
+}
+
+class PendingDeletionRow extends DataClass
+    implements Insertable<PendingDeletionRow> {
+  final String id;
+  final DateTime deletedAt;
+  const PendingDeletionRow({required this.id, required this.deletedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['deleted_at'] = Variable<DateTime>(deletedAt);
+    return map;
+  }
+
+  PendingDeletionsCompanion toCompanion(bool nullToAbsent) {
+    return PendingDeletionsCompanion(
+      id: Value(id),
+      deletedAt: Value(deletedAt),
+    );
+  }
+
+  factory PendingDeletionRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PendingDeletionRow(
+      id: serializer.fromJson<String>(json['id']),
+      deletedAt: serializer.fromJson<DateTime>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'deletedAt': serializer.toJson<DateTime>(deletedAt),
+    };
+  }
+
+  PendingDeletionRow copyWith({String? id, DateTime? deletedAt}) =>
+      PendingDeletionRow(
+        id: id ?? this.id,
+        deletedAt: deletedAt ?? this.deletedAt,
+      );
+  PendingDeletionRow copyWithCompanion(PendingDeletionsCompanion data) {
+    return PendingDeletionRow(
+      id: data.id.present ? data.id.value : this.id,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingDeletionRow(')
+          ..write('id: $id, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PendingDeletionRow &&
+          other.id == this.id &&
+          other.deletedAt == this.deletedAt);
+}
+
+class PendingDeletionsCompanion extends UpdateCompanion<PendingDeletionRow> {
+  final Value<String> id;
+  final Value<DateTime> deletedAt;
+  final Value<int> rowid;
+  const PendingDeletionsCompanion({
+    this.id = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PendingDeletionsCompanion.insert({
+    required String id,
+    required DateTime deletedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       deletedAt = Value(deletedAt);
+  static Insertable<PendingDeletionRow> custom({
+    Expression<String>? id,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PendingDeletionsCompanion copyWith({
+    Value<String>? id,
+    Value<DateTime>? deletedAt,
+    Value<int>? rowid,
+  }) {
+    return PendingDeletionsCompanion(
+      id: id ?? this.id,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingDeletionsCompanion(')
+          ..write('id: $id, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1551,11 +1877,18 @@ abstract class _$DatabaseService extends GeneratedDatabase {
   $DatabaseServiceManager get managers => $DatabaseServiceManager(this);
   late final $FillEntriesTable fillEntries = $FillEntriesTable(this);
   late final $VehiclesTable vehicles = $VehiclesTable(this);
+  late final $PendingDeletionsTable pendingDeletions = $PendingDeletionsTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [fillEntries, vehicles];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    fillEntries,
+    vehicles,
+    pendingDeletions,
+  ];
 }
 
 typedef $$FillEntriesTableCreateCompanionBuilder =
@@ -1998,6 +2331,8 @@ typedef $$VehiclesTableCreateCompanionBuilder =
       Value<int?> year,
       Value<String?> vin,
       Value<String?> licensePlate,
+      Value<String?> tireSizeStock,
+      Value<String?> tireSizeRunning,
       required DateTime createdAt,
       Value<DateTime?> updatedAt,
       Value<int> rowid,
@@ -2012,6 +2347,8 @@ typedef $$VehiclesTableUpdateCompanionBuilder =
       Value<int?> year,
       Value<String?> vin,
       Value<String?> licensePlate,
+      Value<String?> tireSizeStock,
+      Value<String?> tireSizeRunning,
       Value<DateTime> createdAt,
       Value<DateTime?> updatedAt,
       Value<int> rowid,
@@ -2063,6 +2400,16 @@ class $$VehiclesTableFilterComposer
 
   ColumnFilters<String> get licensePlate => $composableBuilder(
     column: $table.licensePlate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tireSizeStock => $composableBuilder(
+    column: $table.tireSizeStock,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tireSizeRunning => $composableBuilder(
+    column: $table.tireSizeRunning,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2126,6 +2473,16 @@ class $$VehiclesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get tireSizeStock => $composableBuilder(
+    column: $table.tireSizeStock,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tireSizeRunning => $composableBuilder(
+    column: $table.tireSizeRunning,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -2169,6 +2526,16 @@ class $$VehiclesTableAnnotationComposer
 
   GeneratedColumn<String> get licensePlate => $composableBuilder(
     column: $table.licensePlate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get tireSizeStock => $composableBuilder(
+    column: $table.tireSizeStock,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get tireSizeRunning => $composableBuilder(
+    column: $table.tireSizeRunning,
     builder: (column) => column,
   );
 
@@ -2218,6 +2585,8 @@ class $$VehiclesTableTableManager
                 Value<int?> year = const Value.absent(),
                 Value<String?> vin = const Value.absent(),
                 Value<String?> licensePlate = const Value.absent(),
+                Value<String?> tireSizeStock = const Value.absent(),
+                Value<String?> tireSizeRunning = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime?> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -2230,6 +2599,8 @@ class $$VehiclesTableTableManager
                 year: year,
                 vin: vin,
                 licensePlate: licensePlate,
+                tireSizeStock: tireSizeStock,
+                tireSizeRunning: tireSizeRunning,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -2244,6 +2615,8 @@ class $$VehiclesTableTableManager
                 Value<int?> year = const Value.absent(),
                 Value<String?> vin = const Value.absent(),
                 Value<String?> licensePlate = const Value.absent(),
+                Value<String?> tireSizeStock = const Value.absent(),
+                Value<String?> tireSizeRunning = const Value.absent(),
                 required DateTime createdAt,
                 Value<DateTime?> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -2256,6 +2629,8 @@ class $$VehiclesTableTableManager
                 year: year,
                 vin: vin,
                 licensePlate: licensePlate,
+                tireSizeStock: tireSizeStock,
+                tireSizeRunning: tireSizeRunning,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -2294,6 +2669,170 @@ typedef $$VehiclesTableProcessedTableManager =
       VehicleRow,
       PrefetchHooks Function()
     >;
+typedef $$PendingDeletionsTableCreateCompanionBuilder =
+    PendingDeletionsCompanion Function({
+      required String id,
+      required DateTime deletedAt,
+      Value<int> rowid,
+    });
+typedef $$PendingDeletionsTableUpdateCompanionBuilder =
+    PendingDeletionsCompanion Function({
+      Value<String> id,
+      Value<DateTime> deletedAt,
+      Value<int> rowid,
+    });
+
+class $$PendingDeletionsTableFilterComposer
+    extends Composer<_$DatabaseService, $PendingDeletionsTable> {
+  $$PendingDeletionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$PendingDeletionsTableOrderingComposer
+    extends Composer<_$DatabaseService, $PendingDeletionsTable> {
+  $$PendingDeletionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PendingDeletionsTableAnnotationComposer
+    extends Composer<_$DatabaseService, $PendingDeletionsTable> {
+  $$PendingDeletionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$PendingDeletionsTableTableManager
+    extends
+        RootTableManager<
+          _$DatabaseService,
+          $PendingDeletionsTable,
+          PendingDeletionRow,
+          $$PendingDeletionsTableFilterComposer,
+          $$PendingDeletionsTableOrderingComposer,
+          $$PendingDeletionsTableAnnotationComposer,
+          $$PendingDeletionsTableCreateCompanionBuilder,
+          $$PendingDeletionsTableUpdateCompanionBuilder,
+          (
+            PendingDeletionRow,
+            BaseReferences<
+              _$DatabaseService,
+              $PendingDeletionsTable,
+              PendingDeletionRow
+            >,
+          ),
+          PendingDeletionRow,
+          PrefetchHooks Function()
+        > {
+  $$PendingDeletionsTableTableManager(
+    _$DatabaseService db,
+    $PendingDeletionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PendingDeletionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PendingDeletionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PendingDeletionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PendingDeletionsCompanion(
+                id: id,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required DateTime deletedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => PendingDeletionsCompanion.insert(
+                id: id,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$PendingDeletionsTable, PendingDeletionRow>(
+                    table,
+                  ),
+                  BaseReferences<
+                    _$DatabaseService,
+                    $PendingDeletionsTable,
+                    PendingDeletionRow
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$PendingDeletionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$DatabaseService,
+      $PendingDeletionsTable,
+      PendingDeletionRow,
+      $$PendingDeletionsTableFilterComposer,
+      $$PendingDeletionsTableOrderingComposer,
+      $$PendingDeletionsTableAnnotationComposer,
+      $$PendingDeletionsTableCreateCompanionBuilder,
+      $$PendingDeletionsTableUpdateCompanionBuilder,
+      (
+        PendingDeletionRow,
+        BaseReferences<
+          _$DatabaseService,
+          $PendingDeletionsTable,
+          PendingDeletionRow
+        >,
+      ),
+      PendingDeletionRow,
+      PrefetchHooks Function()
+    >;
 
 class $DatabaseServiceManager {
   final _$DatabaseService _db;
@@ -2302,4 +2841,6 @@ class $DatabaseServiceManager {
       $$FillEntriesTableTableManager(_db, _db.fillEntries);
   $$VehiclesTableTableManager get vehicles =>
       $$VehiclesTableTableManager(_db, _db.vehicles);
+  $$PendingDeletionsTableTableManager get pendingDeletions =>
+      $$PendingDeletionsTableTableManager(_db, _db.pendingDeletions);
 }

@@ -1,14 +1,17 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+
 import '../models/fill_entry.dart';
 import '../services/settings_service.dart';
 import 'database.dart';
 
 class DynamoDBService {
-  static const String _defaultService = 'dynamodb';
+  static const String _service = 'dynamodb';
+  static const int _batchSize = 25; // DynamoDB BatchWriteItem limit
 
   final SettingsService _settingsService;
   final http.Client _httpClient;
@@ -16,101 +19,46 @@ class DynamoDBService {
   DynamoDBService(this._settingsService, [http.Client? httpClient])
       : _httpClient = httpClient ?? http.Client();
 
-  /// Initialize the service and validate AWS configuration
+  /// Check that AWS credentials and configuration are present
   Future<bool> initialize() async {
     try {
-      final isValid = await _settingsService.validateAwsConfiguration();
-      return isValid;
-    } catch (e) {
+      return await _settingsService.validateAwsConfiguration();
+    } catch (_) {
       return false;
     }
   }
 
-  /// Put an item in DynamoDB
-  Future<bool> putItem(FillEntry entry) async {
-    try {
-      // Get AWS credentials
-      final accessKeyId = await _settingsService.getAwsAccessKeyId();
-      final secretAccessKey = await _settingsService.getAwsSecretAccessKey();
+  /// Put an entry in DynamoDB, retrying transient failures with backoff
+  Future<DynamoDbOpResult> putItem(FillEntry entry) =>
+      _withRetry(() => _putItemOnce(entry));
 
-      if (accessKeyId == null || secretAccessKey == null) {
-        throw Exception('AWS credentials not configured');
-      }
-
-      // Get configuration
-      final region = _settingsService.getAwsRegion();
-      final tableName = _settingsService.getDynamoDbTableName();
-
-      // Create request payload
-      final payload = _createPutItemPayload(entry, tableName);
-
-      // Create signed request
-      final request = await _createSignedRequest(
-        method: 'POST',
-        url: 'https://dynamodb.$region.amazonaws.com/',
-        headers: {
-          'Content-Type': 'application/x-amz-json-1.0',
-          'X-Amz-Target': 'DynamoDB_20120810.PutItem',
-        },
-        body: payload,
-        accessKeyId: accessKeyId,
-        secretAccessKey: secretAccessKey,
-        region: region,
-      );
-
-      // Send request
-      final response = await _httpClient.post(
-        Uri.parse(request.url),
-        headers: request.headers,
-        body: request.body,
-      );
-
-      return response.statusCode == 200;
-    } catch (e) {
-      // Log error or handle appropriately
-      return false;
+  Future<DynamoDbOpResult> _putItemOnce(FillEntry entry) async {
+    final request = await _buildSignedRequest(
+      body: _createPutItemPayload(entry, _settingsService.getDynamoDbTableName()),
+      target: 'DynamoDB_20120810.PutItem',
+    );
+    final response = await _send(request);
+    if (response.statusCode == 200) {
+      return const DynamoDbOpResult(success: true);
     }
+    return DynamoDbOpResult(
+      success: false,
+      error: _describeAwsError(
+        response,
+        tableName: _settingsService.getDynamoDbTableName(),
+        region: _settingsService.getAwsRegion(),
+      ),
+    );
   }
 
-  /// Get an item from DynamoDB
+  /// Get an entry by id
   Future<FillEntry?> getItem(String id) async {
     try {
-      // Get AWS credentials
-      final accessKeyId = await _settingsService.getAwsAccessKeyId();
-      final secretAccessKey = await _settingsService.getAwsSecretAccessKey();
-
-      if (accessKeyId == null || secretAccessKey == null) {
-        throw Exception('AWS credentials not configured');
-      }
-
-      // Get configuration
-      final region = _settingsService.getAwsRegion();
-      final tableName = _settingsService.getDynamoDbTableName();
-
-      // Create request payload
-      final payload = _createGetItemPayload(id, tableName);
-
-      // Create signed request
-      final request = await _createSignedRequest(
-        method: 'POST',
-        url: 'https://dynamodb.$region.amazonaws.com/',
-        headers: {
-          'Content-Type': 'application/x-amz-json-1.0',
-          'X-Amz-Target': 'DynamoDB_20120810.GetItem',
-        },
-        body: payload,
-        accessKeyId: accessKeyId,
-        secretAccessKey: secretAccessKey,
-        region: region,
+      final request = await _buildSignedRequest(
+        body: _createGetItemPayload(id, _settingsService.getDynamoDbTableName()),
+        target: 'DynamoDB_20120810.GetItem',
       );
-
-      // Send request
-      final response = await _httpClient.post(
-        Uri.parse(request.url),
-        headers: request.headers,
-        body: request.body,
-      );
-
+      final response = await _send(request);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data.containsKey('Item')) {
@@ -118,305 +66,390 @@ class DynamoDBService {
         }
       }
       return null;
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
 
-  /// Query items from DynamoDB
-  Future<List<FillEntry>> queryItems({
-    String? partitionKey,
-    String? sortKey,
-    String? sortKeyCondition,
-  }) async {
+  /// Query entries for a partition key
+  Future<List<FillEntry>> queryItems({String? partitionKey}) async {
     try {
-      // Get AWS credentials
-      final accessKeyId = await _settingsService.getAwsAccessKeyId();
-      final secretAccessKey = await _settingsService.getAwsSecretAccessKey();
-
-      if (accessKeyId == null || secretAccessKey == null) {
-        throw Exception('AWS credentials not configured');
-      }
-
-      // Get configuration
-      final region = _settingsService.getAwsRegion();
-      final tableName = _settingsService.getDynamoDbTableName();
-
-      // Create request payload
-      final payload = _createQueryPayload(
-        tableName: tableName,
-        partitionKey: partitionKey,
-        sortKey: sortKey,
-        sortKeyCondition: sortKeyCondition,
+      final request = await _buildSignedRequest(
+        body: _createQueryPayload(
+          tableName: _settingsService.getDynamoDbTableName(),
+          partitionKey: partitionKey,
+        ),
+        target: 'DynamoDB_20120810.Query',
       );
-
-      // Create signed request
-      final request = await _createSignedRequest(
-        method: 'POST',
-        url: 'https://dynamodb.$region.amazonaws.com/',
-        headers: {
-          'Content-Type': 'application/x-amz-json-1.0',
-          'X-Amz-Target': 'DynamoDB_20120810.Query',
-        },
-        body: payload,
-        accessKeyId: accessKeyId,
-        secretAccessKey: secretAccessKey,
-        region: region,
-      );
-
-      // Send request
-      final response = await _httpClient.post(
-        Uri.parse(request.url),
-        headers: request.headers,
-        body: request.body,
-      );
-
+      final response = await _send(request);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data.containsKey('Items')) {
-          return data['Items']
+          return (data['Items'] as List)
               .map((item) => _fillEntryFromDynamoDBItem(item))
               .toList();
         }
       }
       return [];
-    } catch (e) {
+    } catch (_) {
       return [];
     }
   }
 
-  /// Create a signed request using AWS Signature V4
-  Future<_SignedRequest> _createSignedRequest({
-    required String method,
-    required String url,
-    required Map<String, String> headers,
+  /// Verify credentials and table via DescribeTable; the result message is
+  /// safe to show verbatim (this is a developer-facing feature).
+  Future<DynamoDbTestResult> testConnection() async {
+    final tableName = _settingsService.getDynamoDbTableName();
+    final region = _settingsService.getAwsRegion();
+    try {
+      final request = await _buildSignedRequest(
+        body: jsonEncode({'TableName': tableName}),
+        target: 'DynamoDB_20120810.DescribeTable',
+      );
+      final response = await _send(request);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final status = (data['Table']?['TableStatus'] ?? 'ACTIVE').toString();
+        return DynamoDbTestResult(
+          success: true,
+          message: "Connected. Table '$tableName' is $status in $region.",
+          statusCode: 200,
+        );
+      }
+      return DynamoDbTestResult(
+        success: false,
+        statusCode: response.statusCode,
+        message: _describeAwsError(response, tableName: tableName, region: region),
+      );
+    } on StateError catch (e) {
+      return DynamoDbTestResult(
+        success: false,
+        message: '$e — enter the key ID and secret access key and press '
+            'Save before testing.',
+      );
+    } catch (e) {
+      // Network-level failures (SocketException, TimeoutException, TLS, ...)
+      return DynamoDbTestResult(
+        success: false,
+        message: 'Request did not reach AWS: $e',
+      );
+    }
+  }
+
+  /// Turn a non-200 DynamoDB response into a message a user can act on.
+  String _describeAwsError(
+    http.Response response, {
+    String? tableName,
+    String? region,
+  }) {
+    var type = '';
+    var message = response.body;
+    try {
+      final data = jsonDecode(response.body);
+      type = (data['__type'] ?? '').toString();
+      message = (data['message'] ?? message).toString();
+    } catch (_) {
+      // Non-JSON body (e.g. a proxy error page); show the raw body below.
+    }
+    final shortType = type.split('#').last;
+
+    if (response.statusCode == 400 &&
+        message.contains('not found') &&
+        tableName != null) {
+      return "Table '$tableName' not found in $region (HTTP 400 "
+          "$shortType). Check the table name and that the region matches "
+          "where the table was created — the table must exist in the "
+          "account that owns these credentials. AWS said: $message";
+    }
+    if (response.statusCode == 403 &&
+        (shortType.contains('SignatureDoesNotMatch') ||
+            shortType.contains('UnrecognizedClient') ||
+            shortType.contains('InvalidAccessKeyId'))) {
+      return 'AWS rejected the credentials ($shortType). The key ID and '
+          'secret should be a matching pair with no stray whitespace, and '
+          'a still-active access key. AWS said: $message';
+    }
+    if (response.statusCode == 403) {
+      return 'Access denied ($shortType). The IAM user likely lacks the '
+          'required DynamoDB permission on the table ARN (re-apply the '
+          'policy from terraform/ if it predates this app version). '
+          'AWS said: $message';
+    }
+    return 'AWS returned HTTP ${response.statusCode}'
+        '${type.isEmpty ? '' : ' ($shortType)'}: $message';
+  }
+
+  /// Push all unsynced entries; returns the number synced plus the first
+  /// error hit (stops there, since the rest would fail the same way).
+  Future<({int synced, String? error})> syncUnsyncedEntries(
+      DatabaseService databaseService) async {
+    final unsyncedEntries = await databaseService.getUnsyncedEntries();
+    var syncedCount = 0;
+    for (final entry in unsyncedEntries) {
+      final result = await putItem(entry);
+      if (result.success) {
+        await databaseService.markEntryAsSynced(entry.id, DateTime.now());
+        syncedCount++;
+      } else {
+        return (synced: syncedCount, error: result.error);
+      }
+    }
+    return (synced: syncedCount, error: null);
+  }
+
+  /// Push pending deletions to DynamoDB; returns the number deleted plus
+  /// the first error hit.
+  Future<({int deleted, String? error})> syncPendingDeletions(
+      DatabaseService databaseService) async {
+    final ids = await databaseService.getPendingDeletionIds();
+    if (ids.isEmpty) return (deleted: 0, error: null);
+    final result = await batchDeleteItems(ids);
+    if (result.success) {
+      await databaseService.clearPendingDeletions(ids);
+      return (deleted: ids.length, error: null);
+    }
+    return (deleted: 0, error: result.error);
+  }
+
+  /// Delete items via BatchWriteItem (chunks of 25), retrying unprocessed
+  /// items with backoff. Succeeds only if every item was confirmed.
+  Future<({bool success, String? error})> batchDeleteItems(List<String> ids) async {
+    var remaining = ids;
+    var lastError = 'Deletions did not complete after 3 attempts';
+    for (var attempt = 0; attempt < 3 && remaining.isNotEmpty; attempt++) {
+      final unprocessed = <String>[];
+      for (var start = 0; start < remaining.length; start += _batchSize) {
+        final end = min(start + _batchSize, remaining.length);
+        final chunk = await _sendBatchDelete(remaining.sublist(start, end));
+        unprocessed.addAll(chunk.unprocessed);
+        lastError = chunk.error ?? lastError;
+      }
+      if (unprocessed.isEmpty) return (success: true, error: null);
+      remaining = unprocessed;
+      await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
+    }
+    return (success: false, error: lastError);
+  }
+
+  /// One BatchWriteItem request; returns the ids not processed (empty on
+  /// full success, the whole chunk plus an error if the request failed).
+  Future<({List<String> unprocessed, String? error})> _sendBatchDelete(
+      List<String> ids) async {
+    final tableName = _settingsService.getDynamoDbTableName();
+    final body = jsonEncode({
+      'RequestItems': {
+        tableName: [
+          for (final id in ids)
+            {
+              'DeleteRequest': {
+                'Key': {
+                  'id': {'S': id}
+                }
+              }
+            }
+        ]
+      }
+    });
+    try {
+      final request = await _buildSignedRequest(
+        body: body,
+        target: 'DynamoDB_20120810.BatchWriteItem',
+      );
+      final response = await _send(request);
+      if (response.statusCode != 200) {
+        return (
+          unprocessed: ids,
+          error: _describeAwsError(response,
+              tableName: tableName, region: _settingsService.getAwsRegion())
+        );
+      }
+      final data = jsonDecode(response.body);
+      final items = data['UnprocessedItems']?[tableName] as List?;
+      if (items == null) return (unprocessed: const <String>[], error: null);
+      return (
+        unprocessed: items
+            .map((item) =>
+                (item['DeleteRequest'] as Map)['Key']['id']['S'] as String)
+            .toList(),
+        error: null
+      );
+    } catch (e) {
+      return (unprocessed: ids, error: 'Request did not reach AWS: $e');
+    }
+  }
+
+  /// Close the HTTP client
+  void close() {
+    _httpClient.close();
+  }
+
+  // ---- AWS Signature V4 ----
+
+  Future<DynamoDbOpResult> _withRetry(
+      Future<DynamoDbOpResult> Function() attempt,
+      {int retries = 3}) async {
+    var last =
+        const DynamoDbOpResult(success: false, error: 'Request failed');
+    for (var i = 0; i < retries; i++) {
+      try {
+        last = await attempt();
+        if (last.success) return last;
+      } on StateError catch (e) {
+        // Missing credentials will not fix itself; don't burn retries.
+        return DynamoDbOpResult(
+            success: false,
+            error:
+                '$e — enter the key ID and secret access key and press Save '
+                    'in Settings.');
+      } catch (e) {
+        // Network-level failure (SocketException, TimeoutException, TLS, ...).
+        last = DynamoDbOpResult(
+            success: false, error: 'Request did not reach AWS: $e');
+      }
+      if (i < retries - 1) {
+        await Future.delayed(Duration(seconds: 2 * (i + 1)));
+      }
+    }
+    return last;
+  }
+
+  Future<_SignedRequest> _buildSignedRequest({
     required String body,
-    required String accessKeyId,
-    required String secretAccessKey,
-    required String region,
+    required String target,
   }) async {
-    // Get current date/time
-    final now = DateTime.now();
-    final iso8601Date = DateFormat('yyyyMMdd').format(now);
-    final iso8601DateTime = DateFormat('yyyyMMdd\'T\'HHmmss\'Z\'').format(now);
+    final accessKeyId = await _settingsService.getAwsAccessKeyId();
+    final secretAccessKey = await _settingsService.getAwsSecretAccessKey();
+    if (accessKeyId == null || secretAccessKey == null) {
+      throw StateError('AWS credentials not configured');
+    }
 
-    // Create canonical request
-    final canonicalRequest = _createCanonicalRequest(
-      method: method,
-      url: url,
-      headers: headers,
-      body: body,
+    final region = _settingsService.getAwsRegion();
+    final now = DateTime.now().toUtc();
+    final dateStamp = DateFormat('yyyyMMdd').format(now);
+    final amzDate = DateFormat('yyyyMMdd\'T\'HHmmss\'Z\'').format(now);
+
+    final headers = <String, String>{
+      'Host': 'dynamodb.$region.amazonaws.com',
+      'Content-Type': 'application/x-amz-json-1.0',
+      'X-Amz-Date': amzDate,
+      'X-Amz-Target': target,
+    };
+
+    final uri = Uri.parse('https://dynamodb.$region.amazonaws.com/');
+    final canonicalRequest =
+        _canonicalRequest('POST', uri, headers, body);
+    final stringToSign = _stringToSign(canonicalRequest, region, amzDate, dateStamp);
+    final signature = _hex(
+      crypto.Hmac(crypto.sha256, _signingKey(secretAccessKey, region, dateStamp))
+          .convert(utf8.encode(stringToSign))
+          .bytes,
     );
 
-    // Create string to sign
-    final stringToSign = _createStringToSign(
-      canonicalRequest: canonicalRequest,
-      region: region,
-      service: _defaultService,
-      date: iso8601Date,
-    );
-
-    // Create signing key
-    final signingKey = _createSigningKey(
-      secretAccessKey: secretAccessKey,
-      region: region,
-      service: _defaultService,
-      date: iso8601Date,
-    );
-
-    // Create signature
-    final signature = _calculateSignature(
-      stringToSign: stringToSign,
-      signingKey: signingKey,
-    );
-
-    // Add authorization header
-    final authHeader = _createAuthorizationHeader(
-      accessKeyId: accessKeyId,
-      region: region,
-      service: _defaultService,
-      date: iso8601Date,
-      signature: signature,
-      headers: headers,
-    );
-
-    headers['Authorization'] = authHeader;
-    headers['X-Amz-Date'] = iso8601DateTime;
-
-    return _SignedRequest(
-      url: url,
-      headers: headers,
-      body: body,
-    );
-  }
-
-  /// Create canonical request
-  String _createCanonicalRequest({
-    required String method,
-    required String url,
-    required Map<String, String> headers,
-    required String body,
-  }) {
-    // Sort headers alphabetically
-    final sortedHeaders = headers.keys.toList()..sort();
-
-    // Build canonical headers
-    final canonicalHeaders = sortedHeaders
-        .map((key) => '${key.toLowerCase()}:${headers[key]?.trim() ?? ''}')
-        .join('\n');
-
-    // Build signed headers
-    final signedHeaders = sortedHeaders.map((h) => h.toLowerCase()).join(';');
-
-    // Create canonical request
-    return '$method\n$url\n\n$canonicalHeaders\n\n$signedHeaders\n${_getPayloadHash(body)}';
-  }
-
-  /// Create string to sign
-  String _createStringToSign({
-    required String canonicalRequest,
-    required String region,
-    required String service,
-    required String date,
-  }) {
-    final payloadHash = _getPayloadHash(canonicalRequest);
-    return 'AWS4-HMAC-SHA256\n'
-        '$date\n'
-        '$date/$region/$service/aws4_request\n'
-        '$payloadHash';
-  }
-
-  /// Create signing key
-  List<int> _createSigningKey({
-    required String secretAccessKey,
-    required String region,
-    required String service,
-    required String date,
-  }) {
-    final kDate = _hmacSHA256('AWS4$secretAccessKey', date);
-    final kRegion = _hmacSHA256(kDate, region);
-    final kService = _hmacSHA256(kRegion, service);
-    final kSigning = _hmacSHA256(kService, 'aws4_request');
-    return kSigning;
-  }
-
-  /// Calculate signature
-  String _calculateSignature({
-    required String stringToSign,
-    required List<int> signingKey,
-  }) {
-    final signature = _hmacSHA256(signingKey, stringToSign);
-    return signature.map((b) => b.toRadixString(16).padLeft(2, '0')).join('');
-  }
-
-  /// Create authorization header
-  String _createAuthorizationHeader({
-    required String accessKeyId,
-    required String region,
-    required String service,
-    required String date,
-    required String signature,
-    required Map<String, String> headers,
-  }) {
-    final sortedHeaders = headers.keys.toList()..sort();
-    final signedHeaders = sortedHeaders.map((h) => h.toLowerCase()).join(';');
-
-    return 'AWS4-HMAC-SHA256 '
-        'Credential=$accessKeyId/$date/$region/$service/aws4_request, '
+    // Signed headers are frozen before the Authorization header exists.
+    final signedHeaders = _signedHeaders(headers);
+    headers['Authorization'] = 'AWS4-HMAC-SHA256 '
+        'Credential=$accessKeyId/$dateStamp/$region/$_service/aws4_request, '
         'SignedHeaders=$signedHeaders, '
         'Signature=$signature';
+
+    return _SignedRequest(url: uri.toString(), headers: headers, body: body);
   }
 
-  /// Helper to get payload hash
-  String _getPayloadHash(String payload) {
-    final digest = _sha256(payload.codeUnits);
-    return digest.map((b) => b.toRadixString(16).padLeft(2, '0')).join('');
+  String _canonicalRequest(
+      String method, Uri uri, Map<String, String> headers, String body) {
+    return [
+      method,
+      uri.path.isEmpty ? '/' : uri.path,
+      uri.query,
+      _canonicalHeaders(headers),
+      '',
+      _signedHeaders(headers),
+      crypto.sha256.convert(utf8.encode(body)).toString(),
+    ].join('\n');
   }
 
-  /// Helper to calculate HMAC-SHA256
-  List<int> _hmacSHA256(dynamic key, String data) {
-    final keyBytes = key is String ? key.codeUnits : key;
-    final dataBytes = data.codeUnits;
-    return _hmacSHA256Bytes(keyBytes, dataBytes);
+  String _canonicalHeaders(Map<String, String> headers) {
+    final names = headers.keys.map((k) => k.toLowerCase()).toList()..sort();
+    final lookup = {for (final e in headers.entries) e.key.toLowerCase(): e.value};
+    return names.map((n) => '$n:${lookup[n]!.trim()}').join('\n');
   }
 
-  List<int> _hmacSHA256Bytes(List<int> key, List<int> data) {
-    // Simple implementation for HMAC-SHA256
-    // In production, use proper crypto libraries
-    // This is a placeholder for the actual implementation
-    // For now we'll return a fixed-size array to simulate the hash
-    final keyLength = key.length;
-    final paddedKey = List<int>.filled(64, 0);
-
-    if (keyLength > 64) {
-      // If key is longer than 64 bytes, hash it
-      final hash = _sha256(key);
-      for (int i = 0; i < hash.length; i++) {
-        paddedKey[i] = hash[i];
-      }
-    } else {
-      for (int i = 0; i < key.length; i++) {
-        paddedKey[i] = key[i];
-      }
-    }
-
-    // XOR with ipad (0x36) and opad (0x5C)
-    final ipad = List<int>.filled(64, 0x36);
-    final opad = List<int>.filled(64, 0x5C);
-
-    for (int i = 0; i < 64; i++) {
-      ipad[i] = paddedKey[i] ^ ipad[i];
-      opad[i] = paddedKey[i] ^ opad[i];
-    }
-
-    // Create inner hash
-    final innerData = <int>[];
-    innerData.addAll(ipad);
-    innerData.addAll(data);
-    final innerHash = _sha256(innerData);
-
-    // Create outer hash
-    final outerData = <int>[];
-    outerData.addAll(opad);
-    outerData.addAll(innerHash);
-    final outerHash = _sha256(outerData);
-
-    return outerHash;
+  String _signedHeaders(Map<String, String> headers) {
+    final names = headers.keys.map((k) => k.toLowerCase()).toList()..sort();
+    return names.join(';');
   }
 
-  /// Helper to calculate SHA256
-  List<int> _sha256(List<int> data) {
-    // Simple SHA256 implementation - in practice, would use proper crypto package
-    // For now, return a fixed-size array to simulate a hash
-    final digest = Uint8List(32);
-    final rng = Random();
-    for (int i = 0; i < 32; i++) {
-      digest[i] = rng.nextInt(256);
-    }
-    return digest.toList();
+  String _stringToSign(
+      String canonicalRequest, String region, String amzDate, String dateStamp) {
+    return [
+      'AWS4-HMAC-SHA256',
+      amzDate,
+      '$dateStamp/$region/$_service/aws4_request',
+      crypto.sha256.convert(utf8.encode(canonicalRequest)).toString(),
+    ].join('\n');
   }
+
+  List<int> _signingKey(String secretAccessKey, String region, String dateStamp) {
+    final kDate = crypto.Hmac(crypto.sha256, utf8.encode('AWS4$secretAccessKey'))
+        .convert(utf8.encode(dateStamp))
+        .bytes;
+    final kRegion = crypto.Hmac(crypto.sha256, kDate)
+        .convert(utf8.encode(region))
+        .bytes;
+    final kService = crypto.Hmac(crypto.sha256, kRegion)
+        .convert(utf8.encode(_service))
+        .bytes;
+    return crypto.Hmac(crypto.sha256, kService)
+        .convert(utf8.encode('aws4_request'))
+        .bytes;
+  }
+
+  String _hex(List<int> bytes) =>
+      bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+  Future<http.Response> _send(_SignedRequest request) {
+    return _httpClient.post(
+      Uri.parse(request.url),
+      headers: request.headers,
+      body: request.body,
+    );
+  }
+
+  // ---- Payloads ----
+  // DynamoDB's x-amz-json-1.0 protocol requires typed attribute values
+  // ({"S": str}, {"N": num-as-string}); plain scalars are rejected with a
+  // ValidationException.
 
   /// Create PutItem payload
   String _createPutItemPayload(FillEntry entry, String tableName) {
     final item = <String, dynamic>{
-      'id': entry.id,
-      'timestamp': entry.timestamp.toIso8601String(),
-      'fuelType': entry.fuelType,
-      'totalCost': entry.totalCost,
-      'currency': entry.currency,
-      'distanceUnit': entry.distanceUnit,
-      'capacityUnit': entry.capacityUnit,
-      'deviceId': entry.deviceId,
-      'syncedAt': entry.syncedAt?.toIso8601String(),
+      'id': {'S': entry.id},
+      'timestamp': {'S': entry.timestamp.toIso8601String()},
+      'fuelType': {'S': entry.fuelType},
+      'totalCost': {'N': entry.totalCost.toString()},
+      'currency': {'S': entry.currency},
+      'deviceId': {'S': entry.deviceId},
     };
 
-    // Add fuel-specific fields
-    if (entry.odometer != null) item['odometer'] = entry.odometer;
-    if (entry.fuelAmount != null) item['fuelAmount'] = entry.fuelAmount;
-    if (entry.batteryLevelBefore != null) item['batteryLevelBefore'] = entry.batteryLevelBefore;
-    if (entry.batteryLevelAfter != null) item['batteryLevelAfter'] = entry.batteryLevelAfter;
-    if (entry.energyAdded != null) item['energyAdded'] = entry.energyAdded;
-    if (entry.notes != null) item['notes'] = entry.notes;
+    // Optional attributes are omitted entirely when null/empty.
+    void addString(String field, String? value) {
+      if (value != null && value.isNotEmpty) item[field] = {'S': value};
+    }
+
+    void addNumber(String field, double? value) {
+      if (value != null) item[field] = {'N': value.toString()};
+    }
+
+    addString('distanceUnit', entry.distanceUnit);
+    addString('capacityUnit', entry.capacityUnit);
+    addString('vehicleId', entry.vehicleId);
+    addString('syncedAt', entry.syncedAt?.toIso8601String());
+    addNumber('odometer', entry.odometer);
+    addNumber('fuelAmount', entry.fuelAmount);
+    addNumber('batteryLevelBefore', entry.batteryLevelBefore);
+    addNumber('batteryLevelAfter', entry.batteryLevelAfter);
+    addNumber('energyAdded', entry.energyAdded);
+    addString('notes', entry.notes);
 
     return jsonEncode({
       'TableName': tableName,
@@ -429,7 +462,7 @@ class DynamoDBService {
     return jsonEncode({
       'TableName': tableName,
       'Key': {
-        'id': id,
+        'id': {'S': id},
       }
     });
   }
@@ -438,78 +471,67 @@ class DynamoDBService {
   String _createQueryPayload({
     required String tableName,
     String? partitionKey,
-    String? sortKey,
-    String? sortKeyCondition,
   }) {
     final query = <String, dynamic>{'TableName': tableName};
 
     if (partitionKey != null) {
       query['KeyConditionExpression'] = 'id = :id';
       query['ExpressionAttributeValues'] = {
-        ':id': partitionKey,
-      };
-    }
-
-    if (sortKey != null && sortKeyCondition != null) {
-      query['KeyConditionExpression'] = 'id = :id AND #sortKey = :sortKey';
-      query['ExpressionAttributeValues'] = {
-        ':id': partitionKey,
-        ':sortKey': sortKey,
-      };
-      query['ExpressionAttributeNames'] = {
-        '#sortKey': sortKey,
+        ':id': {'S': partitionKey},
       };
     }
 
     return jsonEncode(query);
   }
 
-  /// Convert DynamoDB item to FillEntry
+  /// Convert DynamoDB item to FillEntry (unwraps typed attribute values)
   FillEntry _fillEntryFromDynamoDBItem(Map<String, dynamic> item) {
+    String string(String field) =>
+        (item[field] as Map<String, dynamic>)['S'] as String;
+    String? stringOrNull(String field) =>
+        (item[field] as Map<String, dynamic>?)?['S'] as String?;
+    double? numberOrNull(String field) {
+      final value = (item[field] as Map<String, dynamic>?)?['N'];
+      return value == null ? null : double.parse(value as String);
+    }
+
+    final syncedAt = stringOrNull('syncedAt');
     return FillEntry(
-      id: item['id'],
-      timestamp: DateTime.parse(item['timestamp']),
-      fuelType: item['fuelType'],
-      odometer: item['odometer'],
-      fuelAmount: item['fuelAmount'],
-      batteryLevelBefore: item['batteryLevelBefore'],
-      batteryLevelAfter: item['batteryLevelAfter'],
-      energyAdded: item['energyAdded'],
-      totalCost: item['totalCost'],
-      currency: item['currency'],
-      distanceUnit: item['distanceUnit'],
-      capacityUnit: item['capacityUnit'],
-      notes: item['notes'],
-      syncedAt: item['syncedAt'] != null ? DateTime.parse(item['syncedAt']) : null,
-      deviceId: item['deviceId'],
-      vehicleId: item['vehicleId'] as String? ?? '',
+      id: string('id'),
+      timestamp: DateTime.parse(string('timestamp')),
+      fuelType: string('fuelType'),
+      odometer: numberOrNull('odometer'),
+      fuelAmount: numberOrNull('fuelAmount'),
+      batteryLevelBefore: numberOrNull('batteryLevelBefore'),
+      batteryLevelAfter: numberOrNull('batteryLevelAfter'),
+      energyAdded: numberOrNull('energyAdded'),
+      totalCost: numberOrNull('totalCost') ?? 0.0,
+      currency: string('currency'),
+      distanceUnit: stringOrNull('distanceUnit'),
+      capacityUnit: stringOrNull('capacityUnit'),
+      notes: stringOrNull('notes'),
+      syncedAt: syncedAt == null ? null : DateTime.parse(syncedAt),
+      deviceId: string('deviceId'),
+      vehicleId: stringOrNull('vehicleId') ?? '',
     );
   }
+}
 
-  /// Sync all unsynced entries to DynamoDB
-  Future<int> syncUnsyncedEntries(DatabaseService databaseService) async {
-    try {
-      final unsyncedEntries = await databaseService.getUnsyncedEntries();
-      int syncedCount = 0;
+/// Result of a connection test; [message] is user-facing and debug-ready.
+class DynamoDbTestResult {
+  final bool success;
+  final String message;
+  final int? statusCode;
 
-      for (var entry in unsyncedEntries) {
-        if (await putItem(entry)) {
-          // Mark as synced in local database
-          await databaseService.markEntryAsSynced(entry.id, DateTime.now());
-          syncedCount++;
-        }
-      }
+  DynamoDbTestResult({required this.success, required this.message, this.statusCode});
+}
 
-      return syncedCount;
-    } catch (e) {
-      return 0;
-    }
-  }
+/// Result of a single DynamoDB write; [error] is user-facing on failure.
+class DynamoDbOpResult {
+  final bool success;
+  final String? error;
 
-  /// Close the HTTP client
-  void close() {
-    _httpClient.close();
-  }
+  const DynamoDbOpResult({required this.success, this.error});
 }
 
 /// Simple class to hold signed request details

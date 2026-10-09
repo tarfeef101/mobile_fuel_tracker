@@ -47,6 +47,8 @@ class Vehicles extends Table {
   IntColumn get year => integer().nullable()();
   TextColumn get vin => text().nullable()();
   TextColumn get licensePlate => text().nullable()();
+  TextColumn get tireSizeStock => text().nullable()();
+  TextColumn get tireSizeRunning => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime().nullable()();
 
@@ -54,7 +56,16 @@ class Vehicles extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-@DriftDatabase(tables: [FillEntries, Vehicles])
+@DataClassName('PendingDeletionRow')
+class PendingDeletions extends Table {
+  TextColumn get id => text()();
+  DateTimeColumn get deletedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DriftDatabase(tables: [FillEntries, Vehicles, PendingDeletions])
 class DatabaseService extends _$DatabaseService {
   DatabaseService(super.executor);
 
@@ -87,7 +98,20 @@ class DatabaseService extends _$DatabaseService {
   }
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 3;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.addColumn(vehicles, vehicles.tireSizeStock);
+            await m.addColumn(vehicles, vehicles.tireSizeRunning);
+          }
+          if (from < 3) {
+            await m.createTable(pendingDeletions);
+          }
+        },
+      );
 
   FillEntry _entryFromRow(FillEntryRow row) {
     return FillEntry(
@@ -120,6 +144,8 @@ class DatabaseService extends _$DatabaseService {
       year: row.year,
       vin: row.vin,
       licensePlate: row.licensePlate,
+      tireSizeStock: row.tireSizeStock,
+      tireSizeRunning: row.tireSizeRunning,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     );
@@ -152,12 +178,17 @@ class DatabaseService extends _$DatabaseService {
   }
 
   Future<List<FillEntry>> getAllFillEntries() async {
-    final rows = await select(fillEntries).get();
+    final rows = await (select(fillEntries)
+          ..orderBy([(t) => OrderingTerm(expression: t.timestamp, mode: OrderingMode.desc)]))
+        .get();
     return rows.map(_entryFromRow).toList();
   }
 
   Future<List<FillEntry>> getFillEntriesPaginated(int limit, int offset) async {
-    final rows = await (select(fillEntries)..limit(limit, offset: offset)).get();
+    final rows = await (select(fillEntries)
+          ..orderBy([(t) => OrderingTerm(expression: t.timestamp, mode: OrderingMode.desc)])
+          ..limit(limit, offset: offset))
+        .get();
     return rows.map(_entryFromRow).toList();
   }
 
@@ -182,7 +213,23 @@ class DatabaseService extends _$DatabaseService {
   }
 
   Future<void> deleteFillEntry(String id) async {
+    await recordDeletions([id]);
     await (delete(fillEntries)..where((t) => t.id.equals(id))).go();
+  }
+
+  Future<void> deleteFillEntriesByVehicle(String vehicleId) async {
+    final ids = await (select(fillEntries)
+          ..where((t) => t.vehicleId.equals(vehicleId)))
+        .map((row) => row.id)
+        .get();
+    await recordDeletions(ids);
+    await (delete(fillEntries)..where((t) => t.vehicleId.equals(vehicleId))).go();
+  }
+
+  Future<void> deleteAllFillEntries() async {
+    final ids = await select(fillEntries).map((row) => row.id).get();
+    await recordDeletions(ids);
+    await delete(fillEntries).go();
   }
 
   Future<double> getTotalCost(DateTime start, DateTime end) async {
@@ -233,6 +280,29 @@ class DatabaseService extends _$DatabaseService {
     return rows.map(_entryFromRow).toList();
   }
 
+  Future<void> recordDeletions(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await pendingDeletions.insertAll(
+      ids.map((id) => PendingDeletionsCompanion(
+            id: Value(id),
+            deletedAt: Value(DateTime.now()),
+          )),
+      mode: InsertMode.insertOrIgnore,
+    );
+  }
+
+  Future<List<String>> getPendingDeletionIds() async {
+    return (select(pendingDeletions)
+          ..orderBy([(t) => OrderingTerm(expression: t.deletedAt)]))
+        .map((row) => row.id)
+        .get();
+  }
+
+  Future<void> clearPendingDeletions(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await (delete(pendingDeletions)..where((t) => t.id.isIn(ids))).go();
+  }
+
   Future<Vehicle> insertVehicle(Vehicle vehicle) async {
     await into(vehicles).insertOnConflictUpdate(
       VehiclesCompanion(
@@ -244,6 +314,8 @@ class DatabaseService extends _$DatabaseService {
         year: Value(vehicle.year),
         vin: Value(vehicle.vin),
         licensePlate: Value(vehicle.licensePlate),
+        tireSizeStock: Value(vehicle.tireSizeStock),
+        tireSizeRunning: Value(vehicle.tireSizeRunning),
         createdAt: Value(vehicle.createdAt),
         updatedAt: Value(vehicle.updatedAt),
       ),
@@ -272,6 +344,8 @@ class DatabaseService extends _$DatabaseService {
         year: Value(vehicle.year),
         vin: Value(vehicle.vin),
         licensePlate: Value(vehicle.licensePlate),
+        tireSizeStock: Value(vehicle.tireSizeStock),
+        tireSizeRunning: Value(vehicle.tireSizeRunning),
         updatedAt: Value(vehicle.updatedAt),
       ),
     );
@@ -279,6 +353,10 @@ class DatabaseService extends _$DatabaseService {
 
   Future<void> deleteVehicle(String id) async {
     await (delete(vehicles)..where((t) => t.id.equals(id))).go();
+  }
+
+  Future<void> deleteAllVehicles() async {
+    await delete(vehicles).go();
   }
 
   Future<List<Vehicle>> getVehiclesPaginated(int limit, int offset) async {

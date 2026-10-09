@@ -14,6 +14,7 @@ class AddEntryScreen extends StatefulWidget {
   final DynamoDBService dynamoDBService;
   final SyncService syncService;
   final Function() onEntryAdded;
+  final FillEntry? entryToEdit;
 
   const AddEntryScreen({
     super.key,
@@ -22,6 +23,7 @@ class AddEntryScreen extends StatefulWidget {
     required this.dynamoDBService,
     required this.syncService,
     required this.onEntryAdded,
+    this.entryToEdit,
   });
 
   @override
@@ -52,7 +54,33 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
   void initState() {
     super.initState();
     _loadSettings();
-    _loadVehicles();
+    _init();
+  }
+
+  Future<void> _init() async {
+    // Pre-fill must run after the vehicle list is loaded so the selected
+    // vehicle isn't overwritten by the default.
+    await _loadVehicles();
+    _loadEntryForEdit();
+  }
+
+  void _loadEntryForEdit() {
+    final entry = widget.entryToEdit;
+    if (entry == null) return;
+    setState(() {
+      _selectedFuelType = entry.fuelType;
+      _currency = entry.currency;
+      _distanceUnit = entry.distanceUnit ?? _distanceUnit;
+      _capacityUnit = entry.capacityUnit ?? _capacityUnit;
+      _selectedVehicleId = entry.vehicleId;
+      _odometerController.text = entry.odometer?.toString() ?? '';
+      _fuelAmountController.text = entry.fuelAmount?.toString() ?? '';
+      _batteryBeforeController.text = entry.batteryLevelBefore?.toString() ?? '';
+      _batteryAfterController.text = entry.batteryLevelAfter?.toString() ?? '';
+      _energyAddedController.text = entry.energyAdded?.toString() ?? '';
+      _totalCostController.text = entry.totalCost.toString();
+      _notesController.text = entry.notes ?? '';
+    });
   }
 
   Future<void> _loadSettings() async {
@@ -109,7 +137,7 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Add New Entry'),
+        title: Text(widget.entryToEdit == null ? 'Add New Entry' : 'Edit Entry'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
@@ -240,9 +268,9 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
       children: [
         TextFormField(
           controller: _totalCostController,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Total Cost',
-            prefixText: 'USD ',
+            prefixText: '$_currency ',
           ),
           keyboardType: TextInputType.number,
           validator: (value) {
@@ -258,18 +286,18 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
         if (_selectedFuelType == 'liquid') ...[
           TextFormField(
             controller: _odometerController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Odometer',
-              suffixText: ' km',
+              suffixText: ' $_distanceUnit',
             ),
             keyboardType: TextInputType.number,
           ),
           const SizedBox(height: 15),
           TextFormField(
             controller: _fuelAmountController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Fuel Amount',
-              suffixText: ' L',
+              suffixText: ' $_capacityUnit',
             ),
             keyboardType: TextInputType.number,
           ),
@@ -318,67 +346,66 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
     );
   }
 
-  void _submitForm() {
-    if (_formKey.currentState!.validate()) {
-      // Check if vehicle is selected
-      if (_selectedVehicleId.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please select a vehicle')),
-        );
-        return;
-      }
+  Future<void> _submitForm() async {
+    if (!_formKey.currentState!.validate()) return;
 
-      // Create the fill entry
-      final entry = FillEntry(
-        id: const Uuid().v4(),
-        timestamp: DateTime.now(),
-        fuelType: _selectedFuelType,
-        odometer: _odometerController.text.isNotEmpty ? double.parse(_odometerController.text) : null,
-        fuelAmount: _fuelAmountController.text.isNotEmpty ? double.parse(_fuelAmountController.text) : null,
-        batteryLevelBefore: _batteryBeforeController.text.isNotEmpty ? double.parse(_batteryBeforeController.text) : null,
-        batteryLevelAfter: _batteryAfterController.text.isNotEmpty ? double.parse(_batteryAfterController.text) : null,
-        energyAdded: _energyAddedController.text.isNotEmpty ? double.parse(_energyAddedController.text) : null,
-        totalCost: double.parse(_totalCostController.text),
-        currency: _currency,
-        distanceUnit: _distanceUnit,
-        capacityUnit: _capacityUnit,
-        notes: _notesController.text.isNotEmpty ? _notesController.text : null,
-        syncedAt: null,
-        deviceId: widget.settingsService.getDeviceId(),
-        vehicleId: _selectedVehicleId, // Include vehicle ID
+    if (_selectedVehicleId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a vehicle')),
       );
+      return;
+    }
 
-      // Save to database
-      widget.database.insertFillEntry(entry).then((savedEntry) {
-        // If cloud sync is enabled, sync this entry immediately
-        if (widget.settingsService.getEnableCloudSync()) {
-          widget.syncService.syncEntry(savedEntry).then((success) {
-            if (mounted) {
-              Navigator.of(context).pop();
-              widget.onEntryAdded();
-            }
-          }).catchError((error) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Error syncing entry: $error')),
-              );
-              Navigator.of(context).pop();
-              widget.onEntryAdded();
-            }
-          });
-        } else {
-          if (mounted) {
-            Navigator.of(context).pop();
-            widget.onEntryAdded();
-          }
-        }
-      }).catchError((error) {
-        if (mounted) {
+    final existing = widget.entryToEdit;
+    final entry = FillEntry(
+      id: existing?.id ?? const Uuid().v4(),
+      timestamp: existing?.timestamp ?? DateTime.now(),
+      fuelType: _selectedFuelType,
+      odometer: _odometerController.text.isNotEmpty ? double.parse(_odometerController.text) : null,
+      fuelAmount: _fuelAmountController.text.isNotEmpty ? double.parse(_fuelAmountController.text) : null,
+      batteryLevelBefore: _batteryBeforeController.text.isNotEmpty ? double.parse(_batteryBeforeController.text) : null,
+      batteryLevelAfter: _batteryAfterController.text.isNotEmpty ? double.parse(_batteryAfterController.text) : null,
+      energyAdded: _energyAddedController.text.isNotEmpty ? double.parse(_energyAddedController.text) : null,
+      totalCost: double.parse(_totalCostController.text),
+      currency: _currency,
+      distanceUnit: _distanceUnit,
+      capacityUnit: _capacityUnit,
+      notes: _notesController.text.isNotEmpty ? _notesController.text : null,
+      // Cleared so the edited entry is pushed to the cloud again.
+      syncedAt: null,
+      deviceId: existing?.deviceId ?? widget.settingsService.getDeviceId(),
+      vehicleId: _selectedVehicleId,
+    );
+
+    try {
+      if (existing != null) {
+        await widget.database.updateFillEntry(entry);
+      } else {
+        await widget.database.insertFillEntry(entry);
+      }
+      if (widget.settingsService.getEnableCloudSync()) {
+        final result = await widget.syncService.syncEntry(entry);
+        if (result.failed && mounted) {
+          // App-level messenger, so the snackbar survives the pop below.
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error saving entry: $error')),
+            SnackBar(
+              content: Text(
+                  'Saved locally, but cloud sync failed: ${result.error}'),
+              duration: const Duration(seconds: 8),
+            ),
           );
         }
-      });
+      }
+      if (mounted) {
+        Navigator.of(context).pop();
+        widget.onEntryAdded();
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving entry: $error')),
+        );
+      }
     }
   }
 }

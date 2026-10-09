@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:material_ui/material_ui.dart' as material_ui;
+import 'package:workmanager/workmanager.dart';
 
 import 'data/database.dart';
 import 'data/dynamodb_service.dart';
@@ -50,7 +51,6 @@ ColorScheme _toSdkColorScheme(material_ui.ColorScheme c) {
     surfaceContainer: c.surfaceContainer,
     surfaceContainerHigh: c.surfaceContainerHigh,
     surfaceContainerHighest: c.surfaceContainerHighest,
-    surfaceVariant: c.surfaceVariant,
     onSurfaceVariant: c.onSurfaceVariant,
     outline: c.outline,
     outlineVariant: c.outlineVariant,
@@ -63,8 +63,31 @@ ColorScheme _toSdkColorScheme(material_ui.ColorScheme c) {
   );
 }
 
+/// Holds the active theme mode so screens can update it live.
+class ThemeModeNotifier extends ChangeNotifier {
+  ThemeMode _mode;
+
+  ThemeModeNotifier(this._mode);
+
+  ThemeMode get value => _mode;
+
+  void set(ThemeMode mode) {
+    _mode = mode;
+    notifyListeners();
+  }
+}
+
+@pragma('vm:entry-point')
+void _workManagerCallback() {
+  Workmanager().executeTask((taskId, inputData) async {
+    await runBackgroundSync();
+    return true;
+  });
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  Workmanager().initialize(_workManagerCallback);
 
   final settingsService = await SettingsService.create();
   final database = await DatabaseService.create();
@@ -74,20 +97,30 @@ void main() async {
     dynamoDBService: dynamoDBService,
     settingsService: settingsService,
   );
+  await syncService.scheduleBackgroundSync();
+
+  final themeMode = switch (settingsService.getThemeMode()) {
+    'light' => ThemeMode.light,
+    'dark' => ThemeMode.dark,
+    _ => ThemeMode.system,
+  };
+  final themeModeNotifier = ThemeModeNotifier(themeMode);
 
   runApp(MyApp(
     settingsService: settingsService,
     database: database,
     dynamoDBService: dynamoDBService,
     syncService: syncService,
+    themeModeNotifier: themeModeNotifier,
   ));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   final SettingsService settingsService;
   final DatabaseService database;
   final DynamoDBService dynamoDBService;
   final SyncService syncService;
+  final ThemeModeNotifier themeModeNotifier;
 
   const MyApp({
     super.key,
@@ -95,14 +128,54 @@ class MyApp extends StatelessWidget {
     required this.database,
     required this.dynamoDBService,
     required this.syncService,
+    required this.themeModeNotifier,
   });
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  ThemeMode _themeMode = ThemeMode.system;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _themeMode = widget.themeModeNotifier.value;
+    widget.themeModeNotifier.addListener(_themeModeChanged);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.themeModeNotifier.removeListener(_themeModeChanged);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Best-effort "on app close" sync: fire before Android may kill the
+    // process; anything left over stays flagged as unsynced.
+    if (state == AppLifecycleState.hidden &&
+        widget.settingsService.getSyncFrequency() == 'on_close' &&
+        widget.settingsService.getEnableCloudSync()) {
+      widget.syncService.syncAllUnsyncedEntries();
+    }
+  }
+
+  void _themeModeChanged() {
+    setState(() {
+      _themeMode = widget.themeModeNotifier.value;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return DynamicColorBuilder(
       builder: (lightDynamic, darkDynamic) {
         return MaterialApp(
-          title: 'Fuel Tracker',
+          title: 'Fuel Economy Tracker',
           theme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.light,
@@ -123,12 +196,13 @@ class MyApp extends StatelessWidget {
                     secondary: Colors.green,
                   ),
           ),
-          themeMode: ThemeMode.system,
+          themeMode: _themeMode,
           home: DashboardScreen(
-            settingsService: settingsService,
-            database: database,
-            dynamoDBService: dynamoDBService,
-            syncService: syncService,
+            settingsService: widget.settingsService,
+            database: widget.database,
+            dynamoDBService: widget.dynamoDBService,
+            syncService: widget.syncService,
+            themeModeNotifier: widget.themeModeNotifier,
           ),
           debugShowCheckedModeBanner: false,
         );

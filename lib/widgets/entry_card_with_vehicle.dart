@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
 import '../models/fill_entry.dart';
 import '../models/vehicle.dart';
 import '../data/database.dart';
@@ -6,12 +8,14 @@ import '../data/database.dart';
 class EntryCardWithVehicle extends StatelessWidget {
   final FillEntry entry;
   final Function(String) onDelete;
+  final Function(FillEntry) onEdit;
   final DatabaseService database;
 
   const EntryCardWithVehicle({
     super.key,
     required this.entry,
     required this.onDelete,
+    required this.onEdit,
     required this.database,
   });
 
@@ -35,7 +39,7 @@ class EntryCardWithVehicle extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  entry.timestamp.toString(),
+                  DateFormat('MMM d, yyyy HH:mm').format(entry.timestamp),
                   style: const TextStyle(
                     fontSize: 14,
                     color: Colors.grey,
@@ -79,8 +83,11 @@ class EntryCardWithVehicle extends StatelessWidget {
                     ),
                   );
                 } else {
+                  final fallback = entry.vehicleId.isEmpty
+                      ? 'Unknown'
+                      : entry.vehicleId.substring(0, 6);
                   return Text(
-                    'Vehicle: ${entry.vehicleId.substring(0, 6)}...', // Fallback to ID if vehicle not found
+                    'Vehicle: $fallback', // Fallback to ID if vehicle not found
                     style: const TextStyle(
                       fontSize: 14,
                       color: Colors.grey,
@@ -104,8 +111,14 @@ class EntryCardWithVehicle extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.delete),
+                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: () => onEdit(entry),
+                  tooltip: 'Edit entry',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
                   onPressed: () => onDelete(entry.id),
+                  tooltip: 'Delete entry',
                 ),
               ],
             ),

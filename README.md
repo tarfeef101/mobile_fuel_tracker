@@ -1,55 +1,45 @@
-# Fuel Tracker App
+# Fuel Economy Tracker
 
-A fuel tracking application for Android with local encryption and optional AWS backup.
+An Android app (Flutter) for tracking fuel and EV charging across vehicles: cost per fill, consumption metrics, and tire-size-adjusted mileage. Data is stored in a local SQLCipher-encrypted database, with optional cloud sync to AWS DynamoDB.
 
-## Features
+See `DESIGN.md` for the architecture and data model.
 
-- Local database encryption with SQLCipher
-- AWS DynamoDB cloud synchronization
-- Tire size offset calculations
-- Modern Flutter UI with Material 3
-- Android v2 embedding support
+## Repo layout
 
-## Build Instructions
+- `lib/` — application code
+  - `lib/screens/` — UI screens (dashboard, entry/vehicle forms, settings)
+  - `lib/widgets/` — reusable UI components
+  - `lib/models/` — data models
+  - `lib/data/` — local database (drift/SQLCipher) and the signed-request DynamoDB client
+  - `lib/services/` — settings, cloud sync, and background sync scheduling
+- `android/` — Android platform configuration
+- `test/` — unit tests
+- `terraform/` — drop-in Terraform resources (DynamoDB table + scoped IAM user/key) for provisioning the cloud sync backend
 
-### Prerequisites
-- mise (for environment management)
-- Android SDK
+## Building
 
-### Building APK
+The toolchain (Flutter, JDK, Android SDK) is managed by [mise](https://mise.jdx.dev/) — see `mise.toml`.
 
-To build the APK in a headless environment:
+```bash
+mise install
+mise run build-apk
+```
 
-1. Install dependencies with mise:
-   ```bash
-   mise install
-   ```
+Output: `build/app/outputs/flutter-apk/app-release.apk`.
 
-2. Set up the environment:
-   ```bash
-   export PATH="$HOME/.local/share/mise/installs/flutter/3.47.6/bin:$PATH"
-   export JAVA_HOME="$HOME/.local/share/mise/installs/java/17"
-   export PATH="$HOME/.local/share/mise/installs/java/17/bin:$PATH"
-   ```
+Other tasks:
 
-3. Build the APK:
-   ```bash
-   flutter build apk --release --build-number=1
-   ```
+```bash
+mise run test                        # unit tests
+mise x flutter -- flutter analyze    # static analysis
+```
 
-The APK will be generated at `build/app/outputs/flutter_apk/app-release.apk`.
+## Installing
 
-## Project Structure
+```bash
+adb install build/app/outputs/flutter-apk/app-release.apk
+```
 
-- `lib/` - Flutter application code
-- `android/` - Android-specific code and configuration
-- `lib/data/` - Database and data services
-- `lib/screens/` - UI screens
-- `lib/widgets/` - Reusable UI components
+## Cloud sync (optional)
 
-## Technology Stack
-
-- Flutter 3.47.6
-- Dart 3.13.5
-- SQLCipher for local encryption
-- AWS DynamoDB for cloud backup
+The app signs its own DynamoDB requests (SigV4) — no AWS SDK. If you want the sync backend, `terraform/fuel_tracker.tf` is a drop-in resource file for your existing Terraform setup: it creates the on-demand table (encrypted with the AWS default key) and an IAM user + access key scoped to exactly the API calls the app makes. Enter the user's key in the app under Settings → AWS Configuration.

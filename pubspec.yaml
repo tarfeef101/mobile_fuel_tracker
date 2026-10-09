@@ -1,5 +1,5 @@
 name: fuel_tracker
-description: "A fuel tracking app for Android with local encryption and optional AWS backup"
+description: "Fuel Economy Tracker — Android fuel tracking with local encryption and optional AWS cloud sync"
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -27,9 +27,11 @@ dependencies:
   intl: ^0.20.3
   http: ^1.2.2
   meta: ^1.15.0
-  aws_signature_v4: ^0.6.13
-  flutter_slidable: ^4.0.3
-  flutter_screenutil: ^5.9.3
+  crypto: ^3.0.7
+  fl_chart: ^1.2.0
+  workmanager: ^0.10.10
+  share_plus: ^13.3.1
+  file_picker: ^13.1.0
   dynamic_color: ^2.1.0
   material_ui: ^1.6.0
 

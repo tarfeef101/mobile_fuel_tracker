@@ -31,6 +31,8 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
   final _yearController = TextEditingController();
   final _vinController = TextEditingController();
   final _licensePlateController = TextEditingController();
+  final _tireSizeStockController = TextEditingController();
+  final _tireSizeRunningController = TextEditingController();
 
   String _fuelType = 'liquid';
   bool _isEditing = false;
@@ -47,6 +49,8 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
       _yearController.text = vehicle.year?.toString() ?? '';
       _vinController.text = vehicle.vin ?? '';
       _licensePlateController.text = vehicle.licensePlate ?? '';
+      _tireSizeStockController.text = vehicle.tireSizeStock ?? '';
+      _tireSizeRunningController.text = vehicle.tireSizeRunning ?? '';
       _fuelType = vehicle.fuelType;
     }
   }
@@ -59,6 +63,8 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
     _yearController.dispose();
     _vinController.dispose();
     _licensePlateController.dispose();
+    _tireSizeStockController.dispose();
+    _tireSizeRunningController.dispose();
     super.dispose();
   }
 
@@ -155,6 +161,33 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
                   labelText: 'License Plate',
                 ),
               ),
+              const SizedBox(height: 20),
+
+              const Text(
+                'Tire Sizes',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              TextFormField(
+                controller: _tireSizeStockController,
+                decoration: const InputDecoration(
+                  labelText: 'Stock Tire Size',
+                  hintText: 'e.g. 205/55R16 or 26 inches',
+                ),
+              ),
+              const SizedBox(height: 15),
+
+              TextFormField(
+                controller: _tireSizeRunningController,
+                decoration: const InputDecoration(
+                  labelText: 'Running Tire Size',
+                  hintText: 'e.g. 205/55R16 or 26 inches',
+                ),
+              ),
               const SizedBox(height: 30),
 
               Center(
@@ -163,6 +196,16 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
                   child: Text(_isEditing ? 'Update Vehicle' : 'Add Vehicle'),
                 ),
               ),
+              if (_isEditing) ...[
+                const SizedBox(height: 10),
+                Center(
+                  child: TextButton(
+                    onPressed: _confirmDeleteVehicle,
+                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                    child: const Text('Delete Vehicle'),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -198,6 +241,48 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
     );
   }
 
+  Future<void> _confirmDeleteVehicle() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Vehicle'),
+        content: Text(
+          'Delete ${widget.vehicle!.name}? This will permanently delete the vehicle and all of its fuel entries.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await widget.database.deleteFillEntriesByVehicle(widget.vehicle!.id);
+      await widget.database.deleteVehicle(widget.vehicle!.id);
+      if (mounted) {
+        Navigator.of(context).pop();
+        widget.onVehicleSaved();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Vehicle deleted')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting vehicle: $error')),
+        );
+      }
+    }
+  }
+
   void _submitForm() {
     if (_formKey.currentState!.validate()) {
       // Create or update the vehicle
@@ -210,6 +295,8 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
         year: _yearController.text.isNotEmpty ? int.parse(_yearController.text) : null,
         vin: _vinController.text.isNotEmpty ? _vinController.text : null,
         licensePlate: _licensePlateController.text.isNotEmpty ? _licensePlateController.text : null,
+        tireSizeStock: _tireSizeStockController.text.isNotEmpty ? _tireSizeStockController.text.trim() : null,
+        tireSizeRunning: _tireSizeRunningController.text.isNotEmpty ? _tireSizeRunningController.text.trim() : null,
         createdAt: _isEditing ? widget.vehicle!.createdAt : DateTime.now(),
         updatedAt: DateTime.now(),
       );

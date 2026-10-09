@@ -13,8 +13,9 @@ class SettingsService {
   static const String _enableCloudSyncKey = 'enable_cloud_sync';
   static const String _lastSyncKey = 'last_sync';
   static const String _deviceIdKey = 'device_id';
-  static const String _tireSizeStockKey = 'tire_size_stock';
-  static const String _tireSizeRunningKey = 'tire_size_running';
+  static const String _themeModeKey = 'theme_mode';
+  static const String _syncFrequencyKey = 'sync_frequency';
+  static const String _historyPeriodKey = 'history_period';
 
   final SharedPreferences _preferences;
   final FlutterSecureStorage _secureStorage;
@@ -140,75 +141,34 @@ class SettingsService {
     return newDeviceId;
   }
 
-  // Get stock tire size
-  String getTireSizeStock() {
-    return _preferences.getString(_tireSizeStockKey) ?? '';
+  // Get theme mode
+  String getThemeMode() {
+    return _preferences.getString(_themeModeKey) ?? 'system';
   }
 
-  // Set stock tire size
-  Future<void> setTireSizeStock(String tireSize) async {
-    await _preferences.setString(_tireSizeStockKey, tireSize);
+  // Set theme mode
+  Future<void> setThemeMode(String mode) async {
+    await _preferences.setString(_themeModeKey, mode);
   }
 
-  // Get running tire size
-  String getTireSizeRunning() {
-    return _preferences.getString(_tireSizeRunningKey) ?? '';
+  // Get sync frequency
+  String getSyncFrequency() {
+    return _preferences.getString(_syncFrequencyKey) ?? 'manual';
   }
 
-  // Set running tire size
-  Future<void> setTireSizeRunning(String tireSize) async {
-    await _preferences.setString(_tireSizeRunningKey, tireSize);
+  // Set sync frequency
+  Future<void> setSyncFrequency(String frequency) async {
+    await _preferences.setString(_syncFrequencyKey, frequency);
   }
 
-  // Calculate tire size offset
-  double? getTireSizeOffset() {
-    final stockSize = getTireSizeStock();
-    final runningSize = getTireSizeRunning();
-
-    if (stockSize.isEmpty || runningSize.isEmpty) {
-      return null;
-    }
-
-    try {
-      final stockDiameter = _calculateTireDiameter(stockSize);
-      final runningDiameter = _calculateTireDiameter(runningSize);
-
-      if (stockDiameter != null && runningDiameter != null) {
-        // Calculate offset as the ratio of diameters
-        return (runningDiameter / stockDiameter) - 1.0;
-      }
-    } catch (e) {
-      // If there's an error in calculation, return null
-      return null;
-    }
-
-    return null;
+  // Get dashboard history period (days, or 'all')
+  String getHistoryPeriod() {
+    return _preferences.getString(_historyPeriodKey) ?? '30';
   }
 
-  // Parse tire size string (e.g., "225/65R17") and return diameter in inches
-  double? _calculateTireDiameter(String tireSize) {
-    // Handle direct diameter input (like "26 inches")
-    if (tireSize.contains('in') || tireSize.contains('inch')) {
-      return double.tryParse(tireSize.replaceAll(RegExp(r'[^0-9.]'), ''));
-    }
-
-    // Handle standard tire size format (e.g., "225/65R17")
-    final regex = RegExp(r'^(\d+)\/(\d+)[Rr](\d+)$');
-    final match = regex.firstMatch(tireSize);
-
-    if (match != null) {
-      final width = double.parse(match.group(1)!);
-      final aspectRatio = double.parse(match.group(2)!);
-      final rimDiameter = double.parse(match.group(3)!);
-
-      // Calculate tire diameter in inches
-      // Formula: (width * aspect ratio * 2) + (rim diameter * 12)
-      final sidewallHeight = width * aspectRatio / 100; // In mm
-      final totalDiameter = (sidewallHeight * 2 + rimDiameter * 25.4) / 25.4; // Convert to inches
-      return totalDiameter;
-    }
-
-    return null;
+  // Set dashboard history period
+  Future<void> setHistoryPeriod(String period) async {
+    await _preferences.setString(_historyPeriodKey, period);
   }
 
   // Clear all settings (useful for resetting the app)
@@ -227,21 +187,5 @@ class SettingsService {
   // Validate AWS configuration
   Future<bool> validateAwsConfiguration() async {
     return await areAwsCredentialsSet() && getAwsRegion().isNotEmpty && getDynamoDbTableName().isNotEmpty;
-  }
-
-  // Test AWS connection with basic operation
-  Future<bool> testAwsConnection() async {
-    try {
-      // In a real implementation, we would test by making a simple DynamoDB call
-      // For now, we'll just check if credentials are properly set
-      final accessKeyId = await getAwsAccessKeyId();
-      final secretAccessKey = await getAwsSecretAccessKey();
-
-      // In a production app, this would actually make a call to DynamoDB
-      // to verify credentials work
-      return accessKeyId != null && secretAccessKey != null;
-    } catch (e) {
-      return false;
-    }
   }
 }

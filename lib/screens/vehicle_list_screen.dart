@@ -7,13 +7,11 @@ import 'vehicle_form_screen.dart';
 class VehicleListScreen extends StatefulWidget {
   final DatabaseService database;
   final SettingsService settingsService;
-  final Function(Vehicle) onVehicleSelected;
 
   const VehicleListScreen({
     super.key,
     required this.database,
     required this.settingsService,
-    required this.onVehicleSelected,
   });
 
   @override
@@ -112,8 +110,17 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                         ),
                         trailing: const Icon(Icons.arrow_forward_ios),
                         onTap: () {
-                          widget.onVehicleSelected(vehicle);
-                          Navigator.of(context).pop();
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => VehicleFormScreen(
+                                database: widget.database,
+                                settingsService: widget.settingsService,
+                                onVehicleSaved: _loadVehicles,
+                                vehicle: vehicle,
+                              ),
+                            ),
+                          );
                         },
                       ),
                     );
