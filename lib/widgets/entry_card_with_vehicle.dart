@@ -4,12 +4,14 @@ import 'package:intl/intl.dart';
 import '../models/fill_entry.dart';
 import '../models/vehicle.dart';
 import '../data/database.dart';
+import '../utils/economy.dart';
 
 class EntryCardWithVehicle extends StatelessWidget {
   final FillEntry entry;
   final Function(String) onDelete;
   final Function(FillEntry) onEdit;
   final DatabaseService database;
+  final FillEconomy? economy;
 
   const EntryCardWithVehicle({
     super.key,
@@ -17,6 +19,7 @@ class EntryCardWithVehicle extends StatelessWidget {
     required this.onDelete,
     required this.onEdit,
     required this.database,
+    this.economy,
   });
 
   @override
@@ -96,6 +99,17 @@ class EntryCardWithVehicle extends StatelessWidget {
                 }
               },
             ),
+            if (economy != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Trip economy: ${formatConsumption(economy!.consumptionPer100Km, miles: entry.distanceUnit == 'miles')}'
+                ' over ${formatDistance(economy!.distanceKm, miles: entry.distanceUnit == 'miles')}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
             if (entry.notes != null && entry.notes!.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(

@@ -33,6 +33,18 @@ List<FillEntry> _sortedChronological(List<FillEntry> entries) {
   return sorted;
 }
 
+/// Chronological entries paired with the previous odometer reading of the
+/// same vehicle, so segment distances never span across vehicles.
+Iterable<({FillEntry entry, double? previousOdometer})> _segments(List<FillEntry> entries) sync* {
+  final previousByVehicle = <String, double>{};
+  for (final entry in _sortedChronological(entries)) {
+    yield (entry: entry, previousOdometer: previousByVehicle[entry.vehicleId]);
+    if (entry.odometer != null) {
+      previousByVehicle[entry.vehicleId] = entry.odometer!;
+    }
+  }
+}
+
 double? _entryFuelAmount(FillEntry entry) {
   return entry.fuelAmount ?? (entry.fuelType == 'electric' ? entry.energyAdded : null);
 }
@@ -54,19 +66,18 @@ EconomyMetrics computeEconomy(
   var distanceKm = 0.0;
   var fuelLiters = 0.0;
   var cost = 0.0;
-  double? previousOdometer;
 
-  for (final entry in _sortedChronological(entries)) {
+  for (final segment in _segments(entries)) {
+    final entry = segment.entry;
     cost += entry.totalCost;
     final amount = _entryFuelAmount(entry);
     if (amount != null) {
-      final distance = _segmentDistanceKm(entry, previousOdometer, tireOffsetByVehicle[entry.vehicleId] ?? 0);
+      final distance = _segmentDistanceKm(entry, segment.previousOdometer, tireOffsetByVehicle[entry.vehicleId] ?? 0);
       if (distance != null) {
         distanceKm += distance;
         fuelLiters += amount * _litersFactor(entry.capacityUnit);
       }
     }
-    if (entry.odometer != null) previousOdometer = entry.odometer;
   }
 
   return EconomyMetrics(
@@ -85,20 +96,53 @@ List<double> economyTrend(
   Map<String, double> tireOffsetByVehicle = const {},
 }) {
   final values = <double>[];
-  double? previousOdometer;
 
-  for (final entry in _sortedChronological(entries)) {
+  for (final segment in _segments(entries)) {
+    final entry = segment.entry;
     final amount = _entryFuelAmount(entry);
     if (amount != null) {
-      final distance = _segmentDistanceKm(entry, previousOdometer, tireOffsetByVehicle[entry.vehicleId] ?? 0);
+      final distance = _segmentDistanceKm(entry, segment.previousOdometer, tireOffsetByVehicle[entry.vehicleId] ?? 0);
       if (distance != null) {
         values.add(amount * _litersFactor(entry.capacityUnit) / distance * 100);
       }
     }
-    if (entry.odometer != null) previousOdometer = entry.odometer;
   }
 
   return values;
+}
+
+/// Economy of the trip ending at a single fill, i.e. the segment from the
+/// previous fill of the same vehicle (by odometer) to this fill.
+class FillEconomy {
+  final double consumptionPer100Km;
+  final double distanceKm;
+
+  const FillEconomy({required this.consumptionPer100Km, required this.distanceKm});
+}
+
+/// Per-fill trip economy keyed by entry id. Only fills with a previous
+/// odometer reading for the same vehicle and a positive segment distance
+/// appear in the map.
+Map<String, FillEconomy> fillEconomies(
+  List<FillEntry> entries, {
+  Map<String, double> tireOffsetByVehicle = const {},
+}) {
+  final economies = <String, FillEconomy>{};
+
+  for (final segment in _segments(entries)) {
+    final entry = segment.entry;
+    final amount = _entryFuelAmount(entry);
+    if (amount == null) continue;
+    final distance = _segmentDistanceKm(entry, segment.previousOdometer, tireOffsetByVehicle[entry.vehicleId] ?? 0);
+    if (distance != null) {
+      economies[entry.id] = FillEconomy(
+        consumptionPer100Km: amount * _litersFactor(entry.capacityUnit) / distance * 100,
+        distanceKm: distance,
+      );
+    }
+  }
+
+  return economies;
 }
 
 /// Format L/100km consumption as mpg when the user works in miles.
@@ -106,4 +150,9 @@ String formatConsumption(double per100Km, {required bool miles}) {
   return miles
       ? '${(235.215 / per100Km).toStringAsFixed(1)} mpg'
       : '${per100Km.toStringAsFixed(1)} L/100km';
+}
+
+/// Format a km distance in the user's distance unit.
+String formatDistance(double km, {required bool miles}) {
+  return miles ? '${(km / _kmPerMile).toStringAsFixed(1)} mi' : '${km.toStringAsFixed(1)} km';
 }

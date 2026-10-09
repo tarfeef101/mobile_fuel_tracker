@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/vehicle.dart';
 import '../data/database.dart';
 import '../services/settings_service.dart';
+import '../utils/tire.dart';
 import 'vehicle_form_screen.dart';
 
 class VehicleListScreen extends StatefulWidget {
@@ -50,6 +51,21 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  /// Describes the odometer correction derived from the running tire size,
+  /// shown only when the user entered one.
+  String? _tireCorrectionText(Vehicle vehicle) {
+    final running = vehicle.tireSizeRunning;
+    if (running == null || running.isEmpty) return null;
+
+    final stock = vehicle.tireSizeStock;
+    final sizes = (stock != null && stock.isNotEmpty) ? '$stock → $running' : running;
+    final offset = tireSizeOffset(stock, running);
+    if (offset == null) return 'Tires: $sizes (unrecognized size)';
+    if (offset.abs() < 0.0005) return 'Tires: $sizes (no correction)';
+    final sign = offset > 0 ? '+' : '';
+    return 'Tires: $sizes (${sign}${(offset * 100).toStringAsFixed(1)}% correction)';
   }
 
   @override
@@ -106,6 +122,9 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                           children: [
                             Text('${vehicle.make ?? ''} ${vehicle.model ?? ''} ${vehicle.year ?? ''}'),
                             Text('${vehicle.fuelType} • ${vehicle.licensePlate ?? 'No plate'}'),
+                            if (_tireCorrectionText(vehicle) != null)
+                              Text(_tireCorrectionText(vehicle)!,
+                                  style: const TextStyle(color: Colors.grey)),
                           ],
                         ),
                         trailing: const Icon(Icons.arrow_forward_ios),

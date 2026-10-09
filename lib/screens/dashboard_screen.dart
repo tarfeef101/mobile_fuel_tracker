@@ -35,11 +35,10 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  static const double _kmPerMile = 1.609344;
-
   List<FillEntry> _fillEntries = [];
   Map<String, String> _vehicleNames = {};
   Map<String, double> _tireOffsets = {};
+  Map<String, FillEconomy> _fillEconomies = {};
   String _period = '30';
   String _searchQuery = '';
   final _searchController = TextEditingController();
@@ -75,12 +74,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ? await widget.database.getUnsyncedEntries()
           : <FillEntry>[];
       if (!mounted) return;
+      final tireOffsets = {
+        for (final v in vehicles) v.id: tireSizeOffset(v.tireSizeStock, v.tireSizeRunning) ?? 0,
+      };
+      // From the full history, so the "previous fill" for an entry at the
+      // edge of a period filter is still found.
+      final economies = fillEconomies(entries, tireOffsetByVehicle: tireOffsets);
       setState(() {
         _fillEntries = entries;
         _vehicleNames = {for (final v in vehicles) v.id: v.name};
-        _tireOffsets = {
-          for (final v in vehicles) v.id: tireSizeOffset(v.tireSizeStock, v.tireSizeRunning) ?? 0,
-        };
+        _tireOffsets = tireOffsets;
+        _fillEconomies = economies;
         _unsyncedCount = unsynced.length;
         _lastSync = widget.settingsService.getLastSync();
         _isLoading = false;
@@ -309,6 +313,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ...visible.map((entry) {
                       return EntryCardWithVehicle(
                         entry: entry,
+                        economy: _fillEconomies[entry.id],
                         onDelete: _deleteEntry,
                         onEdit: _editEntry,
                         database: widget.database,
@@ -356,9 +361,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(width: 8),
               _metricCard(
                 'Distance',
-                miles
-                    ? '${(metrics.totalDistanceKm / _kmPerMile).toStringAsFixed(1)} mi'
-                    : '${metrics.totalDistanceKm.toStringAsFixed(1)} km',
+                formatDistance(metrics.totalDistanceKm, miles: miles),
               ),
             ],
           ),
