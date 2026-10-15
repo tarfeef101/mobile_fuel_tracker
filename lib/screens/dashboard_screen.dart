@@ -299,33 +299,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final periodEntries = _periodEntries;
     final visible = _visibleEntries;
 
-    return Column(
-      children: [
-        _buildMetricsGrid(periodEntries),
-        _buildSyncStatus(),
-        _buildPeriodSelector(),
-        _buildSearchField(),
-        Expanded(
-          child: visible.isEmpty
-              ? const Center(
-                  child: Text('No entries match your search'),
-                )
-              : ListView(
-                  children: [
-                    if (periodEntries.length >= 2) _buildCharts(periodEntries),
-                    ...visible.map((entry) {
-                      return EntryCardWithVehicle(
-                        entry: entry,
-                        economy: _fillEconomies[entry.id],
-                        onDelete: _deleteEntry,
-                        onEdit: _editEntry,
-                        database: widget.database,
-                      );
-                    }),
-                  ],
-                ),
-        ),
-      ],
+    // One scroll for the whole body: a pinned header plus Expanded(ListView)
+    // collapses when the fixed header is taller than a landscape screen.
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 96),
+      child: Column(
+        children: [
+          _buildMetricsGrid(periodEntries),
+          _buildSyncStatus(),
+          _buildPeriodSelector(),
+          _buildSearchField(),
+          if (periodEntries.length >= 2) _buildCharts(periodEntries),
+          if (visible.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: Text('No entries match your search')),
+            )
+          else
+            ...visible.map((entry) {
+              return EntryCardWithVehicle(
+                entry: entry,
+                economy: _fillEconomies[entry.id],
+                onDelete: _deleteEntry,
+                onEdit: _editEntry,
+                database: widget.database,
+              );
+            }),
+        ],
+      ),
     );
   }
 
@@ -576,6 +577,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final yPad = span > 0 ? span * 0.15 : (maxY.abs() > 0 ? maxY.abs() * 0.2 : 0.5);
     minY -= yPad;
     maxY += yPad;
+    // Snap to tick boundaries; fl_chart would otherwise add extra labels at
+    // the raw min/max on top of the interval labels.
+    final yStep = _niceStep((maxY - minY) / 3);
+    minY = (minY / yStep).floor() * yStep;
+    maxY = (maxY / yStep).ceil() * yStep;
 
     var minX = points.map((p) => p.x).reduce(min);
     var maxX = points.map((p) => p.x).reduce(max);
@@ -626,6 +632,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           gridData: FlGridData(
             show: true,
             drawVerticalLine: false,
+            horizontalInterval: yStep,
             getDrawingHorizontalLine: (value) => FlLine(
               color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
               strokeWidth: 1,
@@ -637,7 +644,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
-                interval: _niceStep((maxY - minY) / 3),
+                interval: yStep,
                 reservedSize: 38,
                 getTitlesWidget: (value, meta) => Text(yFormat(value), style: labelStyle),
               ),
