@@ -10,6 +10,7 @@ import '../data/database.dart';
 import '../data/dynamodb_service.dart';
 import '../services/settings_service.dart';
 import '../services/sync_service.dart';
+import '../utils/currency.dart';
 import '../utils/economy.dart';
 import '../utils/tire.dart';
 import '../widgets/entry_card_with_vehicle.dart';
@@ -509,6 +510,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final settings = widget.settingsService;
     final miles = settings.getDistanceUnit() == 'miles';
     final currency = settings.getCurrency();
+    final fraction = currencyFractionDigits(currency);
     final series = _chartSeries(entries);
 
     if (series.economy.length < 2 && series.cost.length < 2) {
@@ -534,6 +536,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   avgLabel: 'avg ${_avgY(series.economy).toStringAsFixed(1)} '
                       '${miles ? 'mpg' : 'L/100km'}',
                   yFormat: (value) => value.toStringAsFixed(1),
+                  tooltipFormat: (value) =>
+                      '${value.toStringAsFixed(2)} ${miles ? 'mpg' : 'L/100km'}',
                 ),
               ],
               if (series.economy.length >= 2 && series.cost.length >= 2)
@@ -546,9 +550,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 12),
                 _lineChart(
                   points: series.cost,
-                  avgLabel: 'avg $currency${_avgY(series.cost).toStringAsFixed(2)}/'
+                  avgLabel: 'avg $currency${_avgY(series.cost).toStringAsFixed(fraction)}/'
                       '${settings.getCapacityUnit()}',
-                  yFormat: (value) => value.toStringAsFixed(2),
+                  yFormat: (value) => value.toStringAsFixed(fraction),
+                  tooltipFormat: (value) =>
+                      '$currency${value.toStringAsFixed(fraction)}/'
+                      '${settings.getCapacityUnit()}',
                 ),
               ],
             ],
@@ -564,6 +571,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required List<FlSpot> points,
     required String avgLabel,
     required String Function(double) yFormat,
+    required String Function(double) tooltipFormat,
   }) {
     final theme = Theme.of(context);
     final labelStyle = TextStyle(
@@ -613,6 +621,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
               dotData: const FlDotData(show: true),
             ),
           ],
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              maxContentWidth: 160,
+              getTooltipItems: (spots) => spots
+                  .map((s) => LineTooltipItem(
+                        tooltipFormat(s.y),
+                        TextStyle(
+                          color: s.bar.color ?? theme.colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ))
+                  .toList(),
+            ),
+          ),
           extraLinesData: ExtraLinesData(
             horizontalLines: [
               HorizontalLine(
