@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -14,8 +12,20 @@ import '../utils/currency.dart';
 import '../utils/economy.dart';
 import '../utils/tire.dart';
 import '../widgets/entry_card_with_vehicle.dart';
+import '../widgets/trend_line_chart.dart';
 import 'add_entry_screen.dart';
+import 'chart_detail_screen.dart';
 import 'settings_screen.dart';
+
+/// Data for a dashboard trend chart, shared between the inline card and the
+/// fullscreen view.
+typedef TrendChartSpec = ({
+  String title,
+  List<FlSpot> points,
+  String avgLabel,
+  String Function(double) yFormat,
+  String Function(double) tooltipFormat,
+});
 
 class DashboardScreen extends StatefulWidget {
   final SettingsService settingsService;
@@ -506,16 +516,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return (economy: economy, cost: cost);
   }
 
+  /// Chart title row with a button to expand the chart fullscreen.
+  Widget _chartHeader(String title, VoidCallback onExpand) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.open_in_full, size: 20),
+            tooltip: 'Expand chart',
+            onPressed: onExpand,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCharts(List<FillEntry> entries) {
     final settings = widget.settingsService;
     final miles = settings.getDistanceUnit() == 'miles';
     final currency = settings.getCurrency();
     final fraction = currencyFractionDigits(currency);
+    final unit = settings.getCapacityUnit();
     final series = _chartSeries(entries);
 
     if (series.economy.length < 2 && series.cost.length < 2) {
       return const SizedBox.shrink();
     }
+
+    final economyUnit = miles ? 'mpg' : 'L/100km';
+    final TrendChartSpec economyChart = (
+      title: 'Fuel economy over time',
+      points: series.economy,
+      avgLabel: 'avg ${_avgY(series.economy).toStringAsFixed(1)} $economyUnit',
+      yFormat: (value) => value.toStringAsFixed(1),
+      tooltipFormat: (value) => '${value.toStringAsFixed(2)} $economyUnit',
+    );
+    final TrendChartSpec costChart = (
+      title: 'Fuel cost over time',
+      points: series.cost,
+      avgLabel: 'avg $currency${_avgY(series.cost).toStringAsFixed(fraction)}/$unit',
+      yFormat: (value) => value.toStringAsFixed(fraction),
+      tooltipFormat: (value) => '$currency${value.toStringAsFixed(fraction)}/$unit',
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -526,36 +574,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (series.economy.length >= 2) ...[
-                const Text(
-                  'Fuel economy over time',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-                _lineChart(
-                  points: series.economy,
-                  avgLabel: 'avg ${_avgY(series.economy).toStringAsFixed(1)} '
-                      '${miles ? 'mpg' : 'L/100km'}',
-                  yFormat: (value) => value.toStringAsFixed(1),
-                  tooltipFormat: (value) =>
-                      '${value.toStringAsFixed(2)} ${miles ? 'mpg' : 'L/100km'}',
+                _chartHeader(economyChart.title, () => _openTrendChart(economyChart)),
+                TrendLineChart(
+                  points: economyChart.points,
+                  avgLabel: economyChart.avgLabel,
+                  yFormat: economyChart.yFormat,
+                  tooltipFormat: economyChart.tooltipFormat,
+                  height: 160,
                 ),
               ],
               if (series.economy.length >= 2 && series.cost.length >= 2)
                 const SizedBox(height: 24),
               if (series.cost.length >= 2) ...[
-                const Text(
-                  'Fuel cost over time',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-                _lineChart(
-                  points: series.cost,
-                  avgLabel: 'avg $currency${_avgY(series.cost).toStringAsFixed(fraction)}/'
-                      '${settings.getCapacityUnit()}',
-                  yFormat: (value) => value.toStringAsFixed(fraction),
-                  tooltipFormat: (value) =>
-                      '$currency${value.toStringAsFixed(fraction)}/'
-                      '${settings.getCapacityUnit()}',
+                _chartHeader(costChart.title, () => _openTrendChart(costChart)),
+                TrendLineChart(
+                  points: costChart.points,
+                  avgLabel: costChart.avgLabel,
+                  yFormat: costChart.yFormat,
+                  tooltipFormat: costChart.tooltipFormat,
+                  height: 160,
                 ),
               ],
             ],
@@ -565,129 +602,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Line chart with real time x-axis, y-axis scale, and a dashed average
-  /// line labeled with the average value.
-  Widget _lineChart({
-    required List<FlSpot> points,
-    required String avgLabel,
-    required String Function(double) yFormat,
-    required String Function(double) tooltipFormat,
-  }) {
-    final theme = Theme.of(context);
-    final labelStyle = TextStyle(
-      fontSize: 11,
-      color: theme.colorScheme.onSurfaceVariant,
-    );
-
-    var minY = points.map((p) => p.y).reduce(min);
-    var maxY = points.map((p) => p.y).reduce(max);
-    final span = maxY - minY;
-    final yPad = span > 0 ? span * 0.15 : (maxY.abs() > 0 ? maxY.abs() * 0.2 : 0.5);
-    minY -= yPad;
-    maxY += yPad;
-    // Snap to tick boundaries; fl_chart would otherwise add extra labels at
-    // the raw min/max on top of the interval labels.
-    final yStep = _niceStep((maxY - minY) / 3);
-    minY = (minY / yStep).floor() * yStep;
-    maxY = (maxY / yStep).ceil() * yStep;
-
-    var minX = points.map((p) => p.x).reduce(min);
-    var maxX = points.map((p) => p.x).reduce(max);
-    final xSpan = maxX - minX;
-    if (xSpan == 0) {
-      const day = 24 * 60 * 60 * 1000.0;
-      minX -= day;
-      maxX += day;
-    } else {
-      minX -= xSpan * 0.03;
-      maxX += xSpan * 0.03;
-    }
-
-    final average = _avgY(points);
-
-    return SizedBox(
-      height: 160,
-      child: LineChart(
-        LineChartData(
-          minX: minX,
-          maxX: maxX,
-          minY: minY,
-          maxY: maxY,
-          lineBarsData: [
-            LineChartBarData(
-              spots: points,
-              barWidth: 2,
-              color: theme.colorScheme.primary,
-              dotData: const FlDotData(show: true),
-            ),
-          ],
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              maxContentWidth: 160,
-              getTooltipItems: (spots) => spots
-                  .map((s) => LineTooltipItem(
-                        tooltipFormat(s.y),
-                        TextStyle(
-                          color: s.bar.color ?? theme.colorScheme.primary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ))
-                  .toList(),
-            ),
-          ),
-          extraLinesData: ExtraLinesData(
-            horizontalLines: [
-              HorizontalLine(
-                y: average,
-                color: theme.colorScheme.onSurfaceVariant,
-                strokeWidth: 1,
-                dashArray: const [4, 4],
-                label: HorizontalLineLabel(
-                  show: true,
-                  alignment: Alignment.topRight,
-                  style: labelStyle,
-                  labelResolver: (_) => avgLabel,
-                ),
-              ),
-            ],
-          ),
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            horizontalInterval: yStep,
-            getDrawingHorizontalLine: (value) => FlLine(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-              strokeWidth: 1,
-            ),
-          ),
-          borderData: FlBorderData(show: false),
-          titlesData: FlTitlesData(
-            show: true,
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: yStep,
-                reservedSize: 38,
-                getTitlesWidget: (value, meta) => Text(yFormat(value), style: labelStyle),
-              ),
-            ),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: (maxX - minX) / 3,
-                reservedSize: 24,
-                getTitlesWidget: (value, meta) => Text(
-                  DateFormat('MMM d').format(
-                    DateTime.fromMillisecondsSinceEpoch(value.toInt()),
-                  ),
-                  style: labelStyle,
-                ),
-              ),
-            ),
-          ),
+  void _openTrendChart(TrendChartSpec chart) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChartDetailScreen(
+          title: chart.title,
+          points: chart.points,
+          avgLabel: chart.avgLabel,
+          yFormat: chart.yFormat,
+          tooltipFormat: chart.tooltipFormat,
         ),
       ),
     );
@@ -695,15 +619,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   double _avgY(List<FlSpot> points) =>
       points.map((p) => p.y).reduce((a, b) => a + b) / points.length;
-
-  /// Rounds a raw axis step to a 1/2/5 x 10^n value so labels stay tidy.
-  double _niceStep(double raw) {
-    final magnitude = pow(10, (log(raw) / ln10).floor()).toDouble();
-    for (final m in const [1.0, 2.0, 5.0, 10.0]) {
-      if (raw <= m * magnitude) return m * magnitude;
-    }
-    return 10 * magnitude;
-  }
 
   void _editEntry(FillEntry entry) {
     Navigator.push(
