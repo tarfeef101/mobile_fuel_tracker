@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/vehicle.dart';
+import '../models/fill_entry.dart';
 import '../data/database.dart';
 import '../services/settings_service.dart';
 import '../utils/tire.dart';
@@ -121,7 +122,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text('${vehicle.make ?? ''} ${vehicle.model ?? ''} ${vehicle.year ?? ''}'),
-                            Text('${vehicle.fuelType} • ${vehicle.licensePlate ?? 'No plate'}'),
+                            Text('${fuelTypeLabel(vehicle.fuelType)} • ${vehicle.licensePlate ?? 'No plate'}'),
                             if (_tireCorrectionText(vehicle) != null)
                               Text(_tireCorrectionText(vehicle)!,
                                   style: const TextStyle(color: Colors.grey)),

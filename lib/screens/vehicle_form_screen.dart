@@ -217,7 +217,7 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        _buildFuelTypeButton('liquid', 'Liquid'),
+        _buildFuelTypeButton('liquid', 'Fuel'),
         _buildFuelTypeButton('electric', 'Electric'),
         _buildFuelTypeButton('both', 'Both'),
       ],

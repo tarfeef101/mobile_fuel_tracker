@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -176,6 +178,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return base.where((entry) {
       final vehicleName = _vehicleNames[entry.vehicleId] ?? '';
       return (entry.notes?.toLowerCase().contains(query) ?? false) ||
+          fuelTypeLabel(entry.fuelType).toLowerCase().contains(query) ||
           entry.fuelType.toLowerCase().contains(query) ||
           vehicleName.toLowerCase().contains(query);
     }).toList();
@@ -467,23 +470,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildCharts(List<FillEntry> entries) {
-    final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
-    final secondary = theme.colorScheme.secondary;
-
+  /// Per-fill series for the charts, using the last 30 fills of the period.
+  /// Economy comes from the full-history segment map (tire-corrected) and is
+  /// shown in the user's unit; cost is dollars per unit of capacity.
+  ({List<FlSpot> economy, List<FlSpot> cost}) _chartSeries(List<FillEntry> entries) {
+    final miles = widget.settingsService.getDistanceUnit() == 'miles';
     final chronological = [...entries]
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     final recent = chronological.length > 30
         ? chronological.sublist(chronological.length - 30)
         : chronological;
-    final spots = List.generate(
-      recent.length,
-      (i) => FlSpot(i.toDouble(), recent[i].totalCost),
-    );
 
-    final trend = economyTrend(entries, tireOffsetByVehicle: _tireOffsets);
-    final bars = trend.length > 14 ? trend.sublist(trend.length - 14) : trend;
+    final economy = <FlSpot>[];
+    for (final entry in recent) {
+      final perFill = _fillEconomies[entry.id];
+      if (perFill == null) continue;
+      economy.add(FlSpot(
+        entry.timestamp.millisecondsSinceEpoch.toDouble(),
+        miles ? 235.215 / perFill.consumptionPer100Km : perFill.consumptionPer100Km,
+      ));
+    }
+
+    final cost = <FlSpot>[];
+    for (final entry in recent) {
+      final amount = entryFuelAmount(entry);
+      if (amount == null || amount <= 0) continue;
+      cost.add(FlSpot(
+        entry.timestamp.millisecondsSinceEpoch.toDouble(),
+        entry.totalCost / amount,
+      ));
+    }
+
+    return (economy: economy, cost: cost);
+  }
+
+  Widget _buildCharts(List<FillEntry> entries) {
+    final settings = widget.settingsService;
+    final miles = settings.getDistanceUnit() == 'miles';
+    final currency = settings.getCurrency();
+    final series = _chartSeries(entries);
+
+    if (series.economy.length < 2 && series.cost.length < 2) {
+      return const SizedBox.shrink();
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -493,58 +522,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Cost per fill',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 150,
-                child: LineChart(
-                  LineChartData(
-                    lineBarsData: [
-                      LineChartBarData(
-                        spots: spots,
-                        color: primary,
-                        barWidth: 3,
-                        isCurved: true,
-                        dotData: const FlDotData(show: false),
-                      ),
-                    ],
-                    gridData: const FlGridData(show: false),
-                    borderData: FlBorderData(show: false),
-                    titlesData: const FlTitlesData(show: false),
-                  ),
-                ),
-              ),
-              if (bars.length >= 2) ...[
-                const SizedBox(height: 24),
-                Text(
-                  'Economy per fill',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+              if (series.economy.length >= 2) ...[
+                const Text(
+                  'Fuel economy over time',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 12),
-                SizedBox(
-                  height: 150,
-                  child: BarChart(
-                    BarChartData(
-                      barGroups: List.generate(bars.length, (i) {
-                        return BarChartGroupData(
-                          x: i,
-                          barRods: [
-                            BarChartRodData(toY: bars[i], color: secondary, width: 10),
-                          ],
-                        );
-                      }),
-                      gridData: const FlGridData(show: false),
-                      borderData: FlBorderData(show: false),
-                      titlesData: const FlTitlesData(show: false),
-                    ),
-                  ),
+                _lineChart(
+                  points: series.economy,
+                  avgLabel: 'avg ${_avgY(series.economy).toStringAsFixed(1)} '
+                      '${miles ? 'mpg' : 'L/100km'}',
+                  yFormat: (value) => value.toStringAsFixed(1),
+                ),
+              ],
+              if (series.economy.length >= 2 && series.cost.length >= 2)
+                const SizedBox(height: 24),
+              if (series.cost.length >= 2) ...[
+                const Text(
+                  'Fuel cost over time',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                _lineChart(
+                  points: series.cost,
+                  avgLabel: 'avg $currency${_avgY(series.cost).toStringAsFixed(2)}/'
+                      '${settings.getCapacityUnit()}',
+                  yFormat: (value) => value.toStringAsFixed(2),
                 ),
               ],
             ],
@@ -552,6 +555,124 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
     );
+  }
+
+  /// Line chart with real time x-axis, y-axis scale, and a dashed average
+  /// line labeled with the average value.
+  Widget _lineChart({
+    required List<FlSpot> points,
+    required String avgLabel,
+    required String Function(double) yFormat,
+  }) {
+    final theme = Theme.of(context);
+    final labelStyle = TextStyle(
+      fontSize: 11,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    var minY = points.map((p) => p.y).reduce(min);
+    var maxY = points.map((p) => p.y).reduce(max);
+    final span = maxY - minY;
+    final yPad = span > 0 ? span * 0.15 : (maxY.abs() > 0 ? maxY.abs() * 0.2 : 0.5);
+    minY -= yPad;
+    maxY += yPad;
+
+    var minX = points.map((p) => p.x).reduce(min);
+    var maxX = points.map((p) => p.x).reduce(max);
+    final xSpan = maxX - minX;
+    if (xSpan == 0) {
+      const day = 24 * 60 * 60 * 1000.0;
+      minX -= day;
+      maxX += day;
+    } else {
+      minX -= xSpan * 0.03;
+      maxX += xSpan * 0.03;
+    }
+
+    final average = _avgY(points);
+
+    return SizedBox(
+      height: 160,
+      child: LineChart(
+        LineChartData(
+          minX: minX,
+          maxX: maxX,
+          minY: minY,
+          maxY: maxY,
+          lineBarsData: [
+            LineChartBarData(
+              spots: points,
+              barWidth: 2,
+              color: theme.colorScheme.primary,
+              dotData: const FlDotData(show: true),
+            ),
+          ],
+          extraLinesData: ExtraLinesData(
+            horizontalLines: [
+              HorizontalLine(
+                y: average,
+                color: theme.colorScheme.onSurfaceVariant,
+                strokeWidth: 1,
+                dashArray: const [4, 4],
+                label: HorizontalLineLabel(
+                  show: true,
+                  alignment: Alignment.topRight,
+                  style: labelStyle,
+                  labelResolver: (_) => avgLabel,
+                ),
+              ),
+            ],
+          ),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            getDrawingHorizontalLine: (value) => FlLine(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+              strokeWidth: 1,
+            ),
+          ),
+          borderData: FlBorderData(show: false),
+          titlesData: FlTitlesData(
+            show: true,
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                interval: _niceStep((maxY - minY) / 3),
+                reservedSize: 38,
+                getTitlesWidget: (value, meta) => Text(yFormat(value), style: labelStyle),
+              ),
+            ),
+            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                interval: (maxX - minX) / 3,
+                reservedSize: 24,
+                getTitlesWidget: (value, meta) => Text(
+                  DateFormat('MMM d').format(
+                    DateTime.fromMillisecondsSinceEpoch(value.toInt()),
+                  ),
+                  style: labelStyle,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  double _avgY(List<FlSpot> points) =>
+      points.map((p) => p.y).reduce((a, b) => a + b) / points.length;
+
+  /// Rounds a raw axis step to a 1/2/5 x 10^n value so labels stay tidy.
+  double _niceStep(double raw) {
+    final magnitude = pow(10, (log(raw) / ln10).floor()).toDouble();
+    for (final m in const [1.0, 2.0, 5.0, 10.0]) {
+      if (raw <= m * magnitude) return m * magnitude;
+    }
+    return 10 * magnitude;
   }
 
   void _editEntry(FillEntry entry) {

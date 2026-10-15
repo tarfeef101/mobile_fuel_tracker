@@ -15,7 +15,7 @@ class FuelTypeSelector extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        _buildFuelTypeButton('liquid', 'Liquid', context),
+        _buildFuelTypeButton('liquid', 'Fuel', context),
         _buildFuelTypeButton('electric', 'Electric', context),
         _buildFuelTypeButton('both', 'Both', context),
       ],

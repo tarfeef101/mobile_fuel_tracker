@@ -25,7 +25,7 @@ class EntryCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '${entry.fuelType.capitalizeFirst} Fill',
+                  '${fuelTypeLabel(entry.fuelType)} Fill',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -93,12 +93,5 @@ class EntryCard extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-extension on String {
-  String get capitalizeFirst {
-    if (isEmpty) return this;
-    return '${this[0].toUpperCase()}${substring(1).toLowerCase()}';
   }
 }

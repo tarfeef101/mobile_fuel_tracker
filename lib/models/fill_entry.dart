@@ -1,3 +1,12 @@
+/// User-facing labels for the stored fuel type values.
+const Map<String, String> fuelTypeLabels = {
+  'liquid': 'Fuel',
+  'electric': 'Electric',
+  'both': 'Both',
+};
+
+String fuelTypeLabel(String fuelType) => fuelTypeLabels[fuelType] ?? fuelType;
+
 class FillEntry {
   final String id;
   final DateTime timestamp;

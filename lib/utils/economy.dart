@@ -45,7 +45,8 @@ Iterable<({FillEntry entry, double? previousOdometer})> _segments(List<FillEntry
   }
 }
 
-double? _entryFuelAmount(FillEntry entry) {
+/// Amount added on a fill in the entry's capacity unit (L, gal, or kWh).
+double? entryFuelAmount(FillEntry entry) {
   return entry.fuelAmount ?? (entry.fuelType == 'electric' ? entry.energyAdded : null);
 }
 
@@ -70,7 +71,7 @@ EconomyMetrics computeEconomy(
   for (final segment in _segments(entries)) {
     final entry = segment.entry;
     cost += entry.totalCost;
-    final amount = _entryFuelAmount(entry);
+    final amount = entryFuelAmount(entry);
     if (amount != null) {
       final distance = _segmentDistanceKm(entry, segment.previousOdometer, tireOffsetByVehicle[entry.vehicleId] ?? 0);
       if (distance != null) {
@@ -99,7 +100,7 @@ List<double> economyTrend(
 
   for (final segment in _segments(entries)) {
     final entry = segment.entry;
-    final amount = _entryFuelAmount(entry);
+    final amount = entryFuelAmount(entry);
     if (amount != null) {
       final distance = _segmentDistanceKm(entry, segment.previousOdometer, tireOffsetByVehicle[entry.vehicleId] ?? 0);
       if (distance != null) {
@@ -131,7 +132,7 @@ Map<String, FillEconomy> fillEconomies(
 
   for (final segment in _segments(entries)) {
     final entry = segment.entry;
-    final amount = _entryFuelAmount(entry);
+    final amount = entryFuelAmount(entry);
     if (amount == null) continue;
     final distance = _segmentDistanceKm(entry, segment.previousOdometer, tireOffsetByVehicle[entry.vehicleId] ?? 0);
     if (distance != null) {
