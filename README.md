@@ -43,3 +43,7 @@ adb install build/app/outputs/flutter-apk/app-release.apk
 ## Cloud sync (optional)
 
 The app signs its own DynamoDB requests (SigV4) — no AWS SDK. If you want the sync backend, `terraform/fuel_tracker.tf` is a drop-in resource file for your existing Terraform setup: it creates the on-demand table (encrypted with the AWS default key) and an IAM user + access key scoped to exactly the API calls the app makes. Enter the user's key in the app under Settings → AWS Configuration.
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE) — free for personal, educational, and other noncommercial use; commercial use requires a separate license from the author.
