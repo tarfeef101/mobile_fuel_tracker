@@ -8,6 +8,7 @@ FillEntry _entry({
   required String vehicleId,
   double? odometer,
   double? fuelAmount,
+  double? totalCost,
   String distanceUnit = 'km',
   String capacityUnit = 'L',
 }) {
@@ -17,7 +18,7 @@ FillEntry _entry({
     fuelType: 'liquid',
     odometer: odometer,
     fuelAmount: fuelAmount,
-    totalCost: 10.0,
+    totalCost: totalCost ?? 10.0,
     currency: 'USD',
     distanceUnit: distanceUnit,
     capacityUnit: capacityUnit,
@@ -86,6 +87,27 @@ void main() {
       final economies = fillEconomies(entries);
 
       expect(economies, isEmpty);
+    });
+  });
+
+  group('averageCostPerUnit', () {
+    test('weights by fuel volume instead of counting fills', () {
+      final entries = [
+        _entry(id: 'a1', timestamp: DateTime(2026, 1, 1), vehicleId: 'A', fuelAmount: 5, totalCost: 10.0),
+        _entry(id: 'a2', timestamp: DateTime(2026, 1, 15), vehicleId: 'A', fuelAmount: 15, totalCost: 45.0),
+      ];
+
+      // Simple mean of per-fill prices is 2.5; weighted is 55 / 20.
+      expect(averageCostPerUnit(entries), 2.75);
+    });
+
+    test('skips entries without a usable volume', () {
+      final entries = [
+        _entry(id: 'a1', timestamp: DateTime(2026, 1, 1), vehicleId: 'A'),
+        _entry(id: 'a2', timestamp: DateTime(2026, 1, 15), vehicleId: 'A', fuelAmount: 0),
+      ];
+
+      expect(averageCostPerUnit(entries), isNull);
     });
   });
 }

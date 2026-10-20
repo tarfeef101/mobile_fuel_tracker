@@ -22,6 +22,7 @@ import 'settings_screen.dart';
 typedef TrendChartSpec = ({
   String title,
   List<FlSpot> points,
+  double? average,
   String avgLabel,
   String Function(double) yFormat,
   String Function(double) tooltipFormat,
@@ -544,23 +545,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final fraction = currencyFractionDigits(currency);
     final unit = settings.getCapacityUnit();
     final series = _chartSeries(entries);
-
     if (series.economy.length < 2 && series.cost.length < 2) {
       return const SizedBox.shrink();
     }
 
+    // Weighted averages over the whole period instead of the plotted points.
+    final metrics = computeEconomy(entries, tireOffsetByVehicle: _tireOffsets);
+    final economyAvg = metrics.consumptionPer100Km == null
+        ? null
+        : miles
+              ? 235.215 / metrics.consumptionPer100Km!
+              : metrics.consumptionPer100Km!;
+    final costAvg = averageCostPerUnit(entries);
     final economyUnit = miles ? 'mpg' : 'L/100km';
     final TrendChartSpec economyChart = (
       title: 'Fuel economy over time',
       points: series.economy,
-      avgLabel: 'avg ${_avgY(series.economy).toStringAsFixed(1)} $economyUnit',
+      average: economyAvg,
+      avgLabel: 'avg ${_avgLine(economyAvg, series.economy).toStringAsFixed(1)} $economyUnit',
       yFormat: (value) => value.toStringAsFixed(1),
       tooltipFormat: (value) => '${value.toStringAsFixed(2)} $economyUnit',
     );
     final TrendChartSpec costChart = (
       title: 'Fuel cost over time',
       points: series.cost,
-      avgLabel: 'avg $currency${_avgY(series.cost).toStringAsFixed(fraction)}/$unit',
+      average: costAvg,
+      avgLabel: 'avg $currency${_avgLine(costAvg, series.cost).toStringAsFixed(fraction)}/$unit',
       yFormat: (value) => value.toStringAsFixed(fraction),
       tooltipFormat: (value) => '$currency${value.toStringAsFixed(fraction)}/$unit',
     );
@@ -577,6 +587,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _chartHeader(economyChart.title, () => _openTrendChart(economyChart)),
                 TrendLineChart(
                   points: economyChart.points,
+                  average: economyChart.average,
                   avgLabel: economyChart.avgLabel,
                   yFormat: economyChart.yFormat,
                   tooltipFormat: economyChart.tooltipFormat,
@@ -589,6 +600,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _chartHeader(costChart.title, () => _openTrendChart(costChart)),
                 TrendLineChart(
                   points: costChart.points,
+                  average: costChart.average,
                   avgLabel: costChart.avgLabel,
                   yFormat: costChart.yFormat,
                   tooltipFormat: costChart.tooltipFormat,
@@ -609,6 +621,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         builder: (context) => ChartDetailScreen(
           title: chart.title,
           points: chart.points,
+          average: chart.average,
           avgLabel: chart.avgLabel,
           yFormat: chart.yFormat,
           tooltipFormat: chart.tooltipFormat,
@@ -619,6 +632,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   double _avgY(List<FlSpot> points) =>
       points.map((p) => p.y).reduce((a, b) => a + b) / points.length;
+
+  double _avgLine(double? weighted, List<FlSpot> points) =>
+      weighted ?? _avgY(points);
 
   void _editEntry(FillEntry entry) {
     Navigator.push(
