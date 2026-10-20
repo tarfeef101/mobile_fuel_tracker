@@ -1,6 +1,7 @@
 [tools]
 flutter = "3.47.6"
-java = "17.0.2"
+# Temurin: plain 17.0.2 (jdk.java.net) NPEs in the AGP lint worker on cgroup v2 runners
+java = "temurin-17.0.20+8"
 android-sdk = "23.0"
 
 # Google deprecated sdkmanager in favor of the `android` CLI (no license
