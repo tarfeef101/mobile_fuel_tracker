@@ -8,7 +8,7 @@ android-sdk = "23.0"
 [tasks.android-setup]
 description = "Provision Android SDK packages (idempotent)"
 # bash explicitly: runners default to /bin/sh (dash), which lacks pipefail
-shell = ["bash", "-c"]
+shell = "bash -c"
 run = """
 set -euo pipefail
 android --no-metrics sdk install platform-tools "platforms;android-36" "build-tools;36.0.0"
@@ -17,7 +17,7 @@ android --no-metrics sdk install platform-tools "platforms;android-36" "build-to
 [tasks.build-apk]
 description = "Build the release APK"
 depends = ["android-setup"]
-shell = ["bash", "-c"]
+shell = "bash -c"
 run = """
 set -euo pipefail
 flutter pub get
