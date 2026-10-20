@@ -42,5 +42,13 @@ dev_dependencies:
   drift_dev: ^2.35.1
   build_runner: ^2.4.13
 
+# Temporary: the b245858 bump (shared_preferences_android 2.5.1's Pigeon-JNI
+# rewrite + jni_flutter 1.0.4+1) hangs on the splash screen on-device.
+# Pinned to pre-bump versions until the root cause is confirmed.
+dependency_overrides:
+  shared_preferences: 2.5.5
+  shared_preferences_android: 2.4.28
+  jni_flutter: 1.0.3
+
 flutter:
   uses-material-design: true
