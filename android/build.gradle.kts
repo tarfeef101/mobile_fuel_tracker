@@ -18,6 +18,12 @@ subprojects {
 subprojects {
     project.evaluationDependsOn(":app")
 }
+subprojects {
+    // CI disk/time: skip lint for third-party plugin modules, keep :app lint
+    tasks.configureEach {
+        if (!path.startsWith(":app") && name.startsWith("lint")) enabled = false
+    }
+}
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
