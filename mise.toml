@@ -13,6 +13,18 @@ shell = "bash -c"
 run = """
 set -euo pipefail
 android --no-metrics sdk install platform-tools "platforms;android-36" "build-tools;36.0.0"
+# Pre-install the NDK (AGP would auto-install it per-run); the ~1GB
+# dl.google.com download is flaky in CI, so retry.
+# Version must match the NDK shipped with the pinned Flutter.
+for i in 1 2 3; do
+  if android --no-metrics sdk install "ndk;28.2.13676358"; then
+    exit 0
+  fi
+  echo "NDK install attempt $i failed, retrying in 10s..."
+  sleep 10
+done
+echo "NDK install failed after 3 attempts" >&2
+exit 1
 """
 
 [tasks.build-apk]
