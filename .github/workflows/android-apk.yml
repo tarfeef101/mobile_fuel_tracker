@@ -10,7 +10,7 @@ jobs:
   build-apk:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Reclaim space used by preinstalled toolchains this build doesn't need
       - name: Free up disk space
@@ -22,7 +22,7 @@ jobs:
           sudo apt-get clean
           df -h /
 
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@v5
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -41,7 +41,7 @@ jobs:
         run: mise run build-apk
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuel-tracker-apk
           path: build/app/outputs/flutter-apk/app-release.apk

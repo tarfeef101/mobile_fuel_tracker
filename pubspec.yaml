@@ -17,11 +17,11 @@ hooks:
 dependencies:
   flutter:
     sdk: flutter
-  drift: ^2.21.0
-  sqlite3: ^3.7.0
+  drift: ^2.35.2
+  sqlite3: ^3.7.1
   path_provider: ^2.1.4
   path: ^1.9.0
-  shared_preferences: ^2.5.5
+  shared_preferences: ^2.5.6
   flutter_secure_storage: ^11.2.0
   uuid: ^4.5.1
   intl: ^0.20.3
@@ -33,13 +33,13 @@ dependencies:
   share_plus: ^13.3.1
   file_picker: ^13.1.0
   dynamic_color: ^2.1.0
-  material_ui: ^1.6.0
+  material_ui: ^1.7.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  drift_dev: ^2.21.0
+  drift_dev: ^2.35.1
   build_runner: ^2.4.13
 
 flutter:
