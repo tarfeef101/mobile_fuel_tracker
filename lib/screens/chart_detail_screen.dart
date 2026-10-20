@@ -8,6 +8,7 @@ import '../widgets/trend_line_chart.dart';
 class ChartDetailScreen extends StatelessWidget {
   final String title;
   final List<FlSpot> points;
+  final double? average;
   final String avgLabel;
   final String Function(double) yFormat;
   final String Function(double) tooltipFormat;
@@ -16,6 +17,7 @@ class ChartDetailScreen extends StatelessWidget {
     super.key,
     required this.title,
     required this.points,
+    this.average,
     required this.avgLabel,
     required this.yFormat,
     required this.tooltipFormat,
@@ -29,6 +31,7 @@ class ChartDetailScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: TrendLineChart(
           points: points,
+          average: average,
           avgLabel: avgLabel,
           yFormat: yFormat,
           tooltipFormat: tooltipFormat,

@@ -5,10 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 /// Line chart with a real time x-axis, y-axis scale, and a dashed average
-/// line labeled with the average value. Fills its parent unless [height] is
-/// given.
+/// line. Pass [average] for a weighted value; the simple mean of [points]
+/// is the fallback. Fills its parent unless [height] is given.
 class TrendLineChart extends StatelessWidget {
   final List<FlSpot> points;
+  final double? average;
   final String avgLabel;
   final String Function(double) yFormat;
   final String Function(double) tooltipFormat;
@@ -17,6 +18,7 @@ class TrendLineChart extends StatelessWidget {
   const TrendLineChart({
     super.key,
     required this.points,
+    this.average,
     required this.avgLabel,
     required this.yFormat,
     required this.tooltipFormat,
@@ -31,8 +33,12 @@ class TrendLineChart extends StatelessWidget {
       color: theme.colorScheme.onSurfaceVariant,
     );
 
-    var minY = points.map((p) => p.y).reduce(min);
-    var maxY = points.map((p) => p.y).reduce(max);
+    final average = this.average ??
+        points.map((p) => p.y).reduce((a, b) => a + b) / points.length;
+    // Include the average line so it can't draw outside the y range.
+    final ys = [average, ...points.map((p) => p.y)];
+    var minY = ys.reduce(min);
+    var maxY = ys.reduce(max);
     final span = maxY - minY;
     final yPad = span > 0 ? span * 0.15 : (maxY.abs() > 0 ? maxY.abs() * 0.2 : 0.5);
     minY -= yPad;
@@ -55,7 +61,6 @@ class TrendLineChart extends StatelessWidget {
       maxX += xSpan * 0.03;
     }
 
-    final average = points.map((p) => p.y).reduce((a, b) => a + b) / points.length;
     final landscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
 

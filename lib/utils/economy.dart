@@ -146,6 +146,20 @@ Map<String, FillEconomy> fillEconomies(
   return economies;
 }
 
+/// Total cost divided by total fuel volume — the volume-weighted average
+/// price per unit of capacity.
+double? averageCostPerUnit(List<FillEntry> entries) {
+  var cost = 0.0;
+  var volume = 0.0;
+  for (final entry in entries) {
+    final amount = entryFuelAmount(entry);
+    if (amount == null || amount <= 0) continue;
+    cost += entry.totalCost;
+    volume += amount;
+  }
+  return volume > 0 ? cost / volume : null;
+}
+
 /// Format L/100km consumption as mpg when the user works in miles.
 String formatConsumption(double per100Km, {required bool miles}) {
   return miles
