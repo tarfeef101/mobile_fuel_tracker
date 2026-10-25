@@ -6,11 +6,13 @@ import '../main.dart';
 import '../models/fill_entry.dart';
 import '../data/database.dart';
 import '../data/dynamodb_service.dart';
+import '../services/exchange_rate_service.dart';
 import '../services/settings_service.dart';
 import '../services/sync_service.dart';
 import '../utils/currency.dart';
 import '../utils/economy.dart';
 import '../utils/tire.dart';
+import '../utils/unit_conversion.dart';
 import '../widgets/entry_card_with_vehicle.dart';
 import '../widgets/trend_line_chart.dart';
 import 'add_entry_screen.dart';
@@ -32,6 +34,7 @@ class DashboardScreen extends StatefulWidget {
   final SettingsService settingsService;
   final DatabaseService database;
   final DynamoDBService dynamoDBService;
+  final ExchangeRateService exchangeRateService;
   final SyncService syncService;
   final ThemeModeNotifier themeModeNotifier;
 
@@ -40,6 +43,7 @@ class DashboardScreen extends StatefulWidget {
     required this.settingsService,
     required this.database,
     required this.dynamoDBService,
+    required this.exchangeRateService,
     required this.syncService,
     required this.themeModeNotifier,
   });
@@ -53,6 +57,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, String> _vehicleNames = {};
   Map<String, double> _tireOffsets = {};
   Map<String, FillEconomy> _fillEconomies = {};
+  Map<String, Map<String, double>> _ratesByBase = {};
   String _period = '30';
   String _searchQuery = '';
   final _searchController = TextEditingController();
@@ -65,11 +70,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    widget.settingsService.addListener(_settingsChanged);
     _loadFillEntries();
+  }
+
+  void _settingsChanged() {
+    setState(() {});
   }
 
   @override
   void dispose() {
+    widget.settingsService.removeListener(_settingsChanged);
     _searchController.dispose();
     super.dispose();
   }
@@ -87,6 +98,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final unsynced = widget.settingsService.getEnableCloudSync()
           ? await widget.database.getUnsyncedEntries()
           : <FillEntry>[];
+      // Rates for each entry currency so figures can be shown in the
+      // default currency; entries without a rate fall back to raw cost.
+      final defaultCurrency = widget.settingsService.getCurrency();
+      final ratesByBase = <String, Map<String, double>>{};
+      for (final code in entries.map((e) => e.currency).toSet()) {
+        if (code == defaultCurrency) continue;
+        final rates = await widget.exchangeRateService.getRates(code);
+        if (rates != null) ratesByBase[code.toUpperCase()] = rates;
+      }
       if (!mounted) return;
       final tireOffsets = {
         for (final v in vehicles) v.id: tireSizeOffset(v.tireSizeStock, v.tireSizeRunning) ?? 0,
@@ -99,6 +119,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _vehicleNames = {for (final v in vehicles) v.id: v.name};
         _tireOffsets = tireOffsets;
         _fillEconomies = economies;
+        _ratesByBase = ratesByBase;
         _unsyncedCount = unsynced.length;
         _lastSync = widget.settingsService.getLastSync();
         _isLoading = false;
@@ -221,6 +242,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     settingsService: widget.settingsService,
                     database: widget.database,
                     dynamoDBService: widget.dynamoDBService,
+                    exchangeRateService: widget.exchangeRateService,
                     syncService: widget.syncService,
                     themeModeNotifier: widget.themeModeNotifier,
                   ),
@@ -240,6 +262,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 settingsService: widget.settingsService,
                 database: widget.database,
                 dynamoDBService: widget.dynamoDBService,
+                exchangeRateService: widget.exchangeRateService,
                 syncService: widget.syncService,
                 onEntryAdded: _loadFillEntries,
               ),
@@ -332,6 +355,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               return EntryCardWithVehicle(
                 entry: entry,
                 economy: _fillEconomies[entry.id],
+                defaultCurrency: widget.settingsService.getCurrency(),
+                defaultCapacityUnit: widget.settingsService.getCapacityUnit(),
+                defaultDistanceUnit: widget.settingsService.getDistanceUnit(),
+                ratesByBase: _ratesByBase,
                 onDelete: _deleteEntry,
                 onEdit: _editEntry,
                 database: widget.database,
@@ -344,9 +371,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildMetricsGrid(List<FillEntry> entries) {
     final settings = widget.settingsService;
-    final metrics = computeEconomy(entries, tireOffsetByVehicle: _tireOffsets);
-    final miles = settings.getDistanceUnit() == 'miles';
     final currency = settings.getCurrency();
+    final metrics = computeEconomy(entries,
+        tireOffsetByVehicle: _tireOffsets,
+        currency: currency,
+        ratesByBase: _ratesByBase);
+    final miles = settings.getDistanceUnit() == 'miles';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -485,9 +515,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Per-fill series for the charts, using the last 30 fills of the period.
   /// Economy comes from the full-history segment map (tire-corrected) and is
-  /// shown in the user's unit; cost is dollars per unit of capacity.
+  /// shown in the user's unit; cost is per unit of capacity in the default
+  /// currency.
   ({List<FlSpot> economy, List<FlSpot> cost}) _chartSeries(List<FillEntry> entries) {
-    final miles = widget.settingsService.getDistanceUnit() == 'miles';
+    final settings = widget.settingsService;
+    final miles = settings.getDistanceUnit() == 'miles';
+    final currency = settings.getCurrency();
+    final capacityUnit = settings.getCapacityUnit();
     final chronological = [...entries]
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     final recent = chronological.length > 30
@@ -508,9 +542,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     for (final entry in recent) {
       final amount = entryFuelAmount(entry);
       if (amount == null || amount <= 0) continue;
+      final convertedCost = convertCurrencyAmount(entry.totalCost, entry.currency, currency,
+          ratesByBase: _ratesByBase) ??
+          entry.totalCost;
+      final volume = convertCapacity(amount, entry.capacityUnit, capacityUnit);
+      if (volume <= 0) continue;
       cost.add(FlSpot(
         entry.timestamp.millisecondsSinceEpoch.toDouble(),
-        entry.totalCost / amount,
+        convertedCost / volume,
       ));
     }
 
@@ -550,13 +589,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     // Weighted averages over the whole period instead of the plotted points.
-    final metrics = computeEconomy(entries, tireOffsetByVehicle: _tireOffsets);
+    final metrics = computeEconomy(entries,
+        tireOffsetByVehicle: _tireOffsets,
+        currency: currency,
+        ratesByBase: _ratesByBase);
     final economyAvg = metrics.consumptionPer100Km == null
         ? null
         : miles
               ? 235.215 / metrics.consumptionPer100Km!
               : metrics.consumptionPer100Km!;
-    final costAvg = averageCostPerUnit(entries);
+    final costAvg = averageCostPerUnit(entries,
+        currency: currency, capacityUnit: unit, ratesByBase: _ratesByBase);
     final economyUnit = miles ? 'mpg' : 'L/100km';
     final TrendChartSpec economyChart = (
       title: 'Fuel economy over time',
@@ -644,6 +687,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           settingsService: widget.settingsService,
           database: widget.database,
           dynamoDBService: widget.dynamoDBService,
+          exchangeRateService: widget.exchangeRateService,
           syncService: widget.syncService,
           entryToEdit: entry,
           onEntryAdded: _loadFillEntries,

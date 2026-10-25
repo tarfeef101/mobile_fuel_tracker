@@ -9,8 +9,11 @@ FillEntry _entry({
   double? odometer,
   double? fuelAmount,
   double? totalCost,
+  String currency = 'USD',
   String distanceUnit = 'km',
   String capacityUnit = 'L',
+  double? exchangeRateAtEntry,
+  String? defaultCurrencyAtEntry,
 }) {
   return FillEntry(
     id: id,
@@ -19,11 +22,13 @@ FillEntry _entry({
     odometer: odometer,
     fuelAmount: fuelAmount,
     totalCost: totalCost ?? 10.0,
-    currency: 'USD',
+    currency: currency,
     distanceUnit: distanceUnit,
     capacityUnit: capacityUnit,
     deviceId: 'device',
     vehicleId: vehicleId,
+    exchangeRateAtEntry: exchangeRateAtEntry,
+    defaultCurrencyAtEntry: defaultCurrencyAtEntry,
   );
 }
 
@@ -108,6 +113,79 @@ void main() {
       ];
 
       expect(averageCostPerUnit(entries), isNull);
+    });
+  });
+
+  group('mixed currency and units', () {
+    final ratesByBase = {'EUR': {'USD': 1.08}};
+
+    test('computeEconomy converts costs into the requested currency', () {
+      final entries = [
+        _entry(id: 'a1', timestamp: DateTime(2026, 1, 1), vehicleId: 'A', odometer: 1000, fuelAmount: 10, totalCost: 10.0),
+        _entry(id: 'a2', timestamp: DateTime(2026, 1, 15), vehicleId: 'A', odometer: 1400, fuelAmount: 40, totalCost: 100.0, currency: 'EUR'),
+      ];
+
+      final metrics = computeEconomy(entries, currency: 'USD', ratesByBase: ratesByBase);
+      expect(metrics.totalCost, closeTo(118.0, 1e-9));
+      expect(metrics.averageCostPerFill, closeTo(59.0, 1e-9));
+    });
+
+    test('falls back to the raw cost when no rate is available', () {
+      final entries = [
+        _entry(id: 'a1', timestamp: DateTime(2026, 1, 1), vehicleId: 'A', totalCost: 10.0),
+        _entry(id: 'a2', timestamp: DateTime(2026, 1, 15), vehicleId: 'A', totalCost: 100.0, currency: 'EUR'),
+      ];
+
+      expect(computeEconomy(entries, currency: 'USD').totalCost, 110.0);
+      expect(computeEconomy(entries, currency: 'USD', ratesByBase: {'EUR': {'GBP': 0.85}}).totalCost, 110.0);
+    });
+
+    test('averageCostPerUnit converts cost and volume into the default units', () {
+      final entries = [
+        _entry(id: 'a1', timestamp: DateTime(2026, 1, 1), vehicleId: 'A', fuelAmount: 10, totalCost: 108.0, currency: 'EUR'),
+      ];
+
+      // 108 EUR at 1.08 => 116.64 USD for 10 L => 11.664 USD/L.
+      expect(
+          averageCostPerUnit(entries, currency: 'USD', capacityUnit: 'L', ratesByBase: ratesByBase),
+          closeTo(11.664, 1e-9));
+      // The same cost spread over 10 L = 2.642 gal => 44.15 USD/gal.
+      expect(
+          averageCostPerUnit(entries, currency: 'USD', capacityUnit: 'gal', ratesByBase: ratesByBase),
+          closeTo(44.15, 0.01));
+    });
+
+    test('mL entries convert to liters instead of being treated as L', () {
+      final entries = [
+        _entry(id: 'a1', timestamp: DateTime(2026, 1, 1), vehicleId: 'A', odometer: 0, fuelAmount: 10000, capacityUnit: 'mL'),
+        _entry(id: 'a2', timestamp: DateTime(2026, 1, 15), vehicleId: 'A', odometer: 1000, fuelAmount: 10000, capacityUnit: 'mL'),
+      ];
+
+      // 10 L over 1000 km == 1.0 L/100km (was 1000 L/100km before the fix).
+      expect(fillEconomies(entries)['a2']!.consumptionPer100Km, closeTo(1.0, 1e-9));
+      expect(computeEconomy(entries).totalFuelLiters, closeTo(10.0, 1e-9));
+    });
+
+    test('a pinned rate wins over the live rate map', () {
+      final entries = [
+        _entry(id: 'a1', timestamp: DateTime(2026, 1, 1), vehicleId: 'A', totalCost: 10.0),
+        // Pinned at 1.20 when recorded; the live map says 1.08.
+        _entry(id: 'a2', timestamp: DateTime(2026, 1, 15), vehicleId: 'A', fuelAmount: 10, totalCost: 100.0, currency: 'EUR', exchangeRateAtEntry: 1.20, defaultCurrencyAtEntry: 'USD'),
+      ];
+
+      expect(computeEconomy(entries, currency: 'USD', ratesByBase: ratesByBase).totalCost, 130.0);
+      expect(
+          averageCostPerUnit(entries, currency: 'USD', capacityUnit: 'L', ratesByBase: ratesByBase),
+          closeTo(12.0, 1e-9));
+    });
+
+    test('a pin against another default currency falls back to the live map', () {
+      final entries = [
+        // Pinned for EUR as the default, but the app now shows USD.
+        _entry(id: 'a1', timestamp: DateTime(2026, 1, 1), vehicleId: 'A', totalCost: 100.0, currency: 'EUR', exchangeRateAtEntry: 1.20, defaultCurrencyAtEntry: 'GBP'),
+      ];
+
+      expect(computeEconomy(entries, currency: 'USD', ratesByBase: ratesByBase).totalCost, closeTo(108.0, 1e-9));
     });
   });
 }

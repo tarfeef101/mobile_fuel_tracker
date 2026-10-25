@@ -80,5 +80,65 @@ void main() {
       expect(json['currency'], 'GBP');
       expect(json['deviceId'], 'device-789');
     });
+
+    test('pinnedRateFor only matches its own default currency', () {
+      final entry = FillEntry(
+        id: 'pinned-1',
+        timestamp: DateTime.parse('2023-01-01T10:00:00.000Z'),
+        fuelType: 'liquid',
+        totalCost: 100.0,
+        currency: 'EUR',
+        deviceId: 'device',
+        vehicleId: 'vehicle',
+        exchangeRateAtEntry: 1.2,
+        defaultCurrencyAtEntry: 'USD',
+      );
+
+      expect(entry.pinnedRateFor('USD'), 1.2);
+      expect(entry.pinnedRateFor('EUR'), isNull);
+
+      final unpinned = FillEntry(
+        id: 'pinned-2',
+        timestamp: DateTime.parse('2023-01-01T10:00:00.000Z'),
+        fuelType: 'liquid',
+        totalCost: 100.0,
+        currency: 'EUR',
+        deviceId: 'device',
+        vehicleId: 'vehicle',
+      );
+      expect(unpinned.pinnedRateFor('USD'), isNull);
+    });
+
+    test('exchange rate pin fields round-trip through JSON', () {
+      final entry = FillEntry.fromJson({
+        'id': 'pinned-3',
+        'timestamp': '2023-01-01T10:00:00.000Z',
+        'fuelType': 'liquid',
+        'totalCost': 100.0,
+        'currency': 'EUR',
+        'deviceId': 'device',
+        'vehicleId': 'vehicle',
+        'exchangeRateAtEntry': 1.15,
+        'defaultCurrencyAtEntry': 'USD',
+      });
+
+      expect(entry.exchangeRateAtEntry, 1.15);
+      expect(entry.defaultCurrencyAtEntry, 'USD');
+      expect(entry.toJson()['exchangeRateAtEntry'], 1.15);
+      expect(entry.toJson()['defaultCurrencyAtEntry'], 'USD');
+
+      // Legacy payloads without the fields stay null.
+      final legacy = FillEntry.fromJson({
+        'id': 'legacy-1',
+        'timestamp': '2023-01-01T10:00:00.000Z',
+        'fuelType': 'liquid',
+        'totalCost': 10.0,
+        'currency': 'EUR',
+        'deviceId': 'device',
+        'vehicleId': 'vehicle',
+      });
+      expect(legacy.exchangeRateAtEntry, isNull);
+      expect(legacy.defaultCurrencyAtEntry, isNull);
+    });
   });
 }

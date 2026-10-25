@@ -449,6 +449,8 @@ class DynamoDBService {
     addNumber('batteryLevelBefore', entry.batteryLevelBefore);
     addNumber('batteryLevelAfter', entry.batteryLevelAfter);
     addNumber('energyAdded', entry.energyAdded);
+    addNumber('exchangeRateAtEntry', entry.exchangeRateAtEntry);
+    addString('defaultCurrencyAtEntry', entry.defaultCurrencyAtEntry);
     addString('notes', entry.notes);
 
     return jsonEncode({
@@ -513,6 +515,8 @@ class DynamoDBService {
       syncedAt: syncedAt == null ? null : DateTime.parse(syncedAt),
       deviceId: string('deviceId'),
       vehicleId: stringOrNull('vehicleId') ?? '',
+      exchangeRateAtEntry: numberOrNull('exchangeRateAtEntry'),
+      defaultCurrencyAtEntry: stringOrNull('defaultCurrencyAtEntry'),
     );
   }
 }

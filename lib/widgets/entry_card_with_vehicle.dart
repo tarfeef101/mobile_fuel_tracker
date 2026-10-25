@@ -4,7 +4,9 @@ import 'package:intl/intl.dart';
 import '../models/fill_entry.dart';
 import '../models/vehicle.dart';
 import '../data/database.dart';
+import '../utils/currency.dart';
 import '../utils/economy.dart';
+import '../utils/unit_conversion.dart';
 
 class EntryCardWithVehicle extends StatelessWidget {
   final FillEntry entry;
@@ -12,6 +14,10 @@ class EntryCardWithVehicle extends StatelessWidget {
   final Function(FillEntry) onEdit;
   final DatabaseService database;
   final FillEconomy? economy;
+  final String defaultCurrency;
+  final String defaultCapacityUnit;
+  final String defaultDistanceUnit;
+  final Map<String, Map<String, double>> ratesByBase;
 
   const EntryCardWithVehicle({
     super.key,
@@ -19,11 +25,22 @@ class EntryCardWithVehicle extends StatelessWidget {
     required this.onDelete,
     required this.onEdit,
     required this.database,
+    required this.defaultCurrency,
+    required this.defaultCapacityUnit,
+    required this.defaultDistanceUnit,
+    required this.ratesByBase,
     this.economy,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isLiquid = entry.fuelType == 'liquid';
+    final amount = isLiquid ? entry.fuelAmount : entry.energyAdded;
+    final convertedCost = convertCurrencyAmount(entry.totalCost, entry.currency,
+        defaultCurrency,
+        pinnedRate: entry.pinnedRateFor(defaultCurrency),
+        ratesByBase: ratesByBase);
+    final costIsConverted = convertedCost != null && entry.currency != defaultCurrency;
     return Card(
       margin: const EdgeInsets.all(8),
       child: Padding(
@@ -54,15 +71,31 @@ class EntryCardWithVehicle extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '${entry.totalCost} ${entry.currency}',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        costIsConverted
+                            ? '${convertedCost.toStringAsFixed(currencyFractionDigits(defaultCurrency))} $defaultCurrency'
+                            : '${entry.totalCost} ${entry.currency}',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (costIsConverted)
+                        Text(
+                          '≈ ${entry.totalCost} ${entry.currency}',
+                          style: const TextStyle(fontSize: 13, color: Colors.grey),
+                        ),
+                    ],
                   ),
                 ),
                 Text(
-                  '${entry.fuelType == 'liquid' ? entry.fuelAmount : entry.energyAdded} ${entry.fuelType == 'liquid' ? 'L' : 'kWh'}',
+                  isLiquid
+                      ? _formatAmount(amount, defaultCapacityUnit)
+                      : '$amount kWh',
                   style: const TextStyle(
                     fontSize: 16,
                     color: Colors.grey,
@@ -102,8 +135,8 @@ class EntryCardWithVehicle extends StatelessWidget {
             if (economy != null) ...[
               const SizedBox(height: 8),
               Text(
-                'Trip economy: ${formatConsumption(economy!.consumptionPer100Km, miles: entry.distanceUnit == 'miles')}'
-                ' over ${formatDistance(economy!.distanceKm, miles: entry.distanceUnit == 'miles')}',
+                'Trip economy: ${formatConsumption(economy!.consumptionPer100Km, miles: defaultDistanceUnit == 'miles')}'
+                ' over ${formatDistance(economy!.distanceKm, miles: defaultDistanceUnit == 'miles')}',
                 style: const TextStyle(
                   fontSize: 14,
                   color: Colors.grey,
@@ -140,5 +173,15 @@ class EntryCardWithVehicle extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Liquid amount in the default capacity unit, converting when the entry
+  /// was stored in a different one.
+  String _formatAmount(double? amount, String unit) {
+    if (amount == null) return '—';
+    final converted = convertCapacity(amount, entry.capacityUnit, unit);
+    return unit == 'mL'
+        ? '${converted.toStringAsFixed(0)} $unit'
+        : '${converted.toStringAsFixed(1)} $unit';
   }
 }

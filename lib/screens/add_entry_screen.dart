@@ -3,15 +3,19 @@ import 'package:uuid/uuid.dart';
 
 import '../models/fill_entry.dart';
 import '../models/vehicle.dart';
+import '../services/exchange_rate_service.dart';
 import '../services/settings_service.dart';
 import '../data/database.dart';
 import '../data/dynamodb_service.dart';
 import '../services/sync_service.dart';
+import '../utils/unit_conversion.dart';
+import '../widgets/option_sheet.dart';
 
 class AddEntryScreen extends StatefulWidget {
   final SettingsService settingsService;
   final DatabaseService database;
   final DynamoDBService dynamoDBService;
+  final ExchangeRateService exchangeRateService;
   final SyncService syncService;
   final Function() onEntryAdded;
   final FillEntry? entryToEdit;
@@ -21,6 +25,7 @@ class AddEntryScreen extends StatefulWidget {
     required this.settingsService,
     required this.database,
     required this.dynamoDBService,
+    required this.exchangeRateService,
     required this.syncService,
     required this.onEntryAdded,
     this.entryToEdit,
@@ -50,6 +55,12 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
   List<Vehicle> _vehicles = [];
   bool _isLoadingVehicles = false;
 
+  // Edit mode: whether the form shows the stored (original) value/unit pair
+  // rather than values converted to the current defaults.
+  bool _showOriginalUnits = false;
+  bool _unitsDiffer = false;
+  Map<String, Map<String, double>> _rates = {};
+
   @override
   void initState() {
     super.initState();
@@ -61,26 +72,95 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
     // Pre-fill must run after the vehicle list is loaded so the selected
     // vehicle isn't overwritten by the default.
     await _loadVehicles();
-    _loadEntryForEdit();
+    await _loadEntryForEdit();
   }
 
-  void _loadEntryForEdit() {
+  Future<void> _loadEntryForEdit() async {
     final entry = widget.entryToEdit;
     if (entry == null) return;
+
     setState(() {
       _selectedFuelType = entry.fuelType;
-      _currency = entry.currency;
-      _distanceUnit = entry.distanceUnit ?? _distanceUnit;
-      _capacityUnit = entry.capacityUnit ?? _capacityUnit;
       _selectedVehicleId = entry.vehicleId;
-      _odometerController.text = entry.odometer?.toString() ?? '';
-      _fuelAmountController.text = entry.fuelAmount?.toString() ?? '';
       _batteryBeforeController.text = entry.batteryLevelBefore?.toString() ?? '';
       _batteryAfterController.text = entry.batteryLevelAfter?.toString() ?? '';
       _energyAddedController.text = entry.energyAdded?.toString() ?? '';
-      _totalCostController.text = entry.totalCost.toString();
       _notesController.text = entry.notes ?? '';
     });
+
+    final unitsDiffer = entry.currency != widget.settingsService.getCurrency() ||
+        (entry.distanceUnit ?? 'km') != widget.settingsService.getDistanceUnit() ||
+        (entry.capacityUnit ?? 'L') != widget.settingsService.getCapacityUnit();
+    if (!unitsDiffer) {
+      _applyOriginalUnits(entry);
+      return;
+    }
+    _unitsDiffer = true;
+
+    // Open showing the defaults with values converted, matching history.
+    // Without a rate the cost can't be converted, so keep the originals.
+    final rates = entry.currency == widget.settingsService.getCurrency()
+        ? null
+        : await _ratesFor(entry.currency);
+    if (!mounted) return;
+    final costRate = rates?[widget.settingsService.getCurrency().toUpperCase()];
+    if (entry.currency != widget.settingsService.getCurrency() && costRate == null) {
+      _applyOriginalUnits(entry);
+      setState(() => _showOriginalUnits = true);
+      return;
+    }
+    _applyConvertedUnits(entry, costRate);
+  }
+
+  void _applyOriginalUnits(FillEntry entry) {
+    setState(() {
+      _currency = entry.currency;
+      _distanceUnit = entry.distanceUnit ?? 'km';
+      _capacityUnit = entry.capacityUnit ?? 'L';
+      _odometerController.text = entry.odometer?.toString() ?? '';
+      _fuelAmountController.text = entry.fuelAmount?.toString() ?? '';
+      _totalCostController.text = entry.totalCost.toString();
+    });
+  }
+
+  void _applyConvertedUnits(FillEntry entry, double? costRate) {
+    final defaultCurrency = widget.settingsService.getCurrency();
+    final defaultDistanceUnit = widget.settingsService.getDistanceUnit();
+    final defaultCapacityUnit = widget.settingsService.getCapacityUnit();
+    setState(() {
+      _currency = defaultCurrency;
+      _distanceUnit = defaultDistanceUnit;
+      _capacityUnit = defaultCapacityUnit;
+      _odometerController.text = entry.odometer != null
+          ? _fmt(convertDistance(entry.odometer!, entry.distanceUnit, defaultDistanceUnit), 1)
+          : '';
+      _fuelAmountController.text = entry.fuelAmount != null
+          ? _fmt(convertCapacity(entry.fuelAmount!, entry.capacityUnit, defaultCapacityUnit), 2)
+          : '';
+      _totalCostController.text =
+          costRate == null ? entry.totalCost.toString() : _fmt(entry.totalCost * costRate, 2);
+      _showOriginalUnits = false;
+    });
+  }
+
+  Future<void> _toggleOriginalUnits(bool showOriginal) async {
+    final entry = widget.entryToEdit!;
+    if (showOriginal) {
+      _applyOriginalUnits(entry);
+      setState(() => _showOriginalUnits = true);
+      return;
+    }
+    final defaultCurrency = widget.settingsService.getCurrency();
+    double? costRate;
+    if (entry.currency != defaultCurrency) {
+      costRate = (await _ratesFor(entry.currency))?[defaultCurrency.toUpperCase()];
+      if (!mounted) return;
+      if (costRate == null) {
+        _showSnackBar('Exchange rate unavailable');
+        return;
+      }
+    }
+    _applyConvertedUnits(entry, costRate);
   }
 
   Future<void> _loadSettings() async {
@@ -118,6 +198,132 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
         _isLoadingVehicles = false;
       });
     }
+  }
+
+  Future<void> _pickCurrency() async {
+    final options = await widget.exchangeRateService.currencyCodes();
+    if (!mounted) return;
+    await showOptionSheet(
+      context,
+      title: 'Currency',
+      options: options,
+      selected: _currency,
+      onSelected: _changeCurrency,
+    );
+  }
+
+  Future<void> _changeCurrency(String unit) async {
+    if (unit == _currency) return;
+    final value = double.tryParse(_totalCostController.text);
+    double? converted;
+    if (value != null) {
+      final rate = (await _ratesFor(_currency))?[unit.toUpperCase()];
+      if (!mounted) return;
+      if (rate == null) {
+        _showSnackBar('Exchange rate unavailable');
+        return;
+      }
+      converted = value * rate;
+    }
+    setState(() {
+      _currency = unit;
+      if (converted != null) _totalCostController.text = _fmt(converted, 2);
+      _clearOriginalModeIfStale();
+    });
+  }
+
+  void _pickDistanceUnit() {
+    showOptionSheet(
+      context,
+      title: 'Distance Unit',
+      options: const ['km', 'miles'],
+      selected: _distanceUnit,
+      onSelected: _changeDistanceUnit,
+    );
+  }
+
+  Future<void> _changeDistanceUnit(String unit) async {
+    if (unit == _distanceUnit) return;
+    final value = double.tryParse(_odometerController.text);
+    final converted = value == null ? null : convertDistance(value, _distanceUnit, unit);
+    setState(() {
+      _distanceUnit = unit;
+      if (converted != null) _odometerController.text = _fmt(converted, 1);
+      _clearOriginalModeIfStale();
+    });
+  }
+
+  void _pickCapacityUnit() {
+    showOptionSheet(
+      context,
+      title: 'Capacity Unit',
+      options: const ['L', 'gal', 'mL'],
+      selected: _capacityUnit,
+      onSelected: _changeCapacityUnit,
+    );
+  }
+
+  Future<void> _changeCapacityUnit(String unit) async {
+    if (unit == _capacityUnit) return;
+    final value = double.tryParse(_fuelAmountController.text);
+    final converted = value == null ? null : convertCapacity(value, _capacityUnit, unit);
+    setState(() {
+      _capacityUnit = unit;
+      if (converted != null) _fuelAmountController.text = _fmt(converted, 2);
+      _clearOriginalModeIfStale();
+    });
+  }
+
+  // Once a unit is picked by hand the displayed pair is no longer the stored
+  // original, so the toggle must go back to the converted state.
+  void _clearOriginalModeIfStale() {
+    if (widget.entryToEdit != null) _showOriginalUnits = false;
+  }
+
+  Future<Map<String, double>?> _ratesFor(String base) async {
+    final key = base.toUpperCase();
+    final cached = _rates[key];
+    if (cached != null) return cached;
+    final rates = await widget.exchangeRateService.getRates(base);
+    if (rates != null) _rates[key] = rates;
+    return rates;
+  }
+
+  String _fmt(double value, int digits) => value.toStringAsFixed(digits);
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Widget _buildUnitChip(String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label),
+            const SizedBox(width: 4),
+            const Icon(Icons.expand_more, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOriginalUnitsToggle() {
+    if (widget.entryToEdit == null || !_unitsDiffer) return const SizedBox.shrink();
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      title: const Text('Show original units'),
+      subtitle: Text(_showOriginalUnits
+          ? 'Values as entered at the time of the fill'
+          : 'Values converted to your default units'),
+      value: _showOriginalUnits,
+      onChanged: _toggleOriginalUnits,
+    );
   }
 
   @override
@@ -181,6 +387,7 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
               ),
               const SizedBox(height: 10),
               _buildFillDetailsForm(),
+              _buildOriginalUnitsToggle(),
               const SizedBox(height: 30),
 
               Center(
@@ -270,7 +477,7 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
           controller: _totalCostController,
           decoration: InputDecoration(
             labelText: 'Total Cost',
-            prefixText: '$_currency ',
+            prefixIcon: _buildUnitChip(_currency, () => _pickCurrency()),
           ),
           keyboardType: TextInputType.number,
           validator: (value) {
@@ -288,7 +495,7 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
             controller: _odometerController,
             decoration: InputDecoration(
               labelText: 'Odometer',
-              suffixText: ' $_distanceUnit',
+              suffixIcon: _buildUnitChip(_distanceUnit, _pickDistanceUnit),
             ),
             keyboardType: TextInputType.number,
           ),
@@ -297,7 +504,7 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
             controller: _fuelAmountController,
             decoration: InputDecoration(
               labelText: 'Fuel Amount',
-              suffixText: ' $_capacityUnit',
+              suffixIcon: _buildUnitChip(_capacityUnit, _pickCapacityUnit),
             ),
             keyboardType: TextInputType.number,
           ),
@@ -357,6 +564,33 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
     }
 
     final existing = widget.entryToEdit;
+
+    // Pin the rate at record time so displayed values don't drift as live
+    // rates change; keep an edit's existing pin when the currency is
+    // unchanged, otherwise fetch a fresh one.
+    double? pinnedRate;
+    String? pinnedDefault;
+    final defaultCurrency = widget.settingsService.getCurrency();
+    if (_currency.toUpperCase() != defaultCurrency.toUpperCase()) {
+      if (existing != null &&
+          existing.currency.toUpperCase() == _currency.toUpperCase() &&
+          existing.exchangeRateAtEntry != null &&
+          existing.defaultCurrencyAtEntry != null) {
+        pinnedRate = existing.exchangeRateAtEntry;
+        pinnedDefault = existing.defaultCurrencyAtEntry;
+      } else {
+        final rates = await _ratesFor(_currency);
+        if (!mounted) return;
+        final rate = rates?[defaultCurrency.toUpperCase()];
+        // Offline with no cached rate: save unpinned; the start-up backfill
+        // pins it on the next launch.
+        if (rate != null) {
+          pinnedRate = rate;
+          pinnedDefault = defaultCurrency.toUpperCase();
+        }
+      }
+    }
+
     final entry = FillEntry(
       id: existing?.id ?? const Uuid().v4(),
       timestamp: existing?.timestamp ?? DateTime.now(),
@@ -375,6 +609,8 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
       syncedAt: null,
       deviceId: existing?.deviceId ?? widget.settingsService.getDeviceId(),
       vehicleId: _selectedVehicleId,
+      exchangeRateAtEntry: pinnedRate,
+      defaultCurrencyAtEntry: pinnedDefault,
     );
 
     try {

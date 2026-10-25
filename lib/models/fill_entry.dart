@@ -24,6 +24,12 @@ class FillEntry {
   final DateTime? syncedAt;
   final String deviceId;
   final String vehicleId; // Foreign key to Vehicle table
+  // Exchange rate pinned at record time so displayed values don't drift as
+  // live rates change: units of [currency] per unit of
+  // [defaultCurrencyAtEntry]. Both null when the entry's currency was the
+  // default (no conversion needed) or no rate was available at the time.
+  final double? exchangeRateAtEntry;
+  final String? defaultCurrencyAtEntry;
 
   FillEntry({
     required this.id,
@@ -42,7 +48,14 @@ class FillEntry {
     this.syncedAt,
     required this.deviceId,
     required this.vehicleId,
+    this.exchangeRateAtEntry,
+    this.defaultCurrencyAtEntry,
   });
+
+  /// The pinned rate to use when converting into [to] — the stored rate
+  /// only applies to the default currency it was recorded against.
+  double? pinnedRateFor(String to) =>
+      defaultCurrencyAtEntry == to ? exchangeRateAtEntry : null;
 
   // Factory constructor for creating from JSON
   factory FillEntry.fromJson(Map<String, dynamic> json) {
@@ -63,6 +76,8 @@ class FillEntry {
       syncedAt: json['syncedAt'] == null ? null : DateTime.parse(json['syncedAt'] as String),
       deviceId: json['deviceId'] as String,
       vehicleId: json['vehicleId'] as String,
+      exchangeRateAtEntry: (json['exchangeRateAtEntry'] as num?)?.toDouble(),
+      defaultCurrencyAtEntry: json['defaultCurrencyAtEntry'] as String?,
     );
   }
 
@@ -85,6 +100,8 @@ class FillEntry {
       'syncedAt': syncedAt?.toIso8601String(),
       'deviceId': deviceId,
       'vehicleId': vehicleId,
+      'exchangeRateAtEntry': exchangeRateAtEntry,
+      'defaultCurrencyAtEntry': defaultCurrencyAtEntry,
     };
   }
 
@@ -106,6 +123,8 @@ class FillEntry {
     DateTime? syncedAt,
     String? deviceId,
     String? vehicleId,
+    double? exchangeRateAtEntry,
+    String? defaultCurrencyAtEntry,
   }) {
     return FillEntry(
       id: id ?? this.id,
@@ -124,6 +143,8 @@ class FillEntry {
       syncedAt: syncedAt ?? this.syncedAt,
       deviceId: deviceId ?? this.deviceId,
       vehicleId: vehicleId ?? this.vehicleId,
+      exchangeRateAtEntry: exchangeRateAtEntry ?? this.exchangeRateAtEntry,
+      defaultCurrencyAtEntry: defaultCurrencyAtEntry ?? this.defaultCurrencyAtEntry,
     );
   }
 

@@ -6,6 +6,7 @@ import 'package:workmanager/workmanager.dart';
 import 'data/database.dart';
 import 'data/dynamodb_service.dart';
 import 'screens/dashboard_screen.dart';
+import 'services/exchange_rate_service.dart';
 import 'services/settings_service.dart';
 import 'services/sync_service.dart';
 
@@ -92,12 +93,22 @@ void main() async {
   final settingsService = await SettingsService.create();
   final database = await DatabaseService.create();
   final dynamoDBService = DynamoDBService(settingsService);
+  final exchangeRateService = await ExchangeRateService.create();
   final syncService = SyncService(
     databaseService: database,
     dynamoDBService: dynamoDBService,
     settingsService: settingsService,
   );
   await syncService.scheduleBackgroundSync();
+
+  // Pin the exchange rate on entries saved before rate pinning existed.
+  // Best effort: a failure here must not block start-up.
+  try {
+    await database.pinExchangeRates(
+      defaultCurrency: settingsService.getCurrency(),
+      rateFor: exchangeRateService.getRates,
+    );
+  } catch (_) {}
 
   final themeMode = switch (settingsService.getThemeMode()) {
     'light' => ThemeMode.light,
@@ -110,6 +121,7 @@ void main() async {
     settingsService: settingsService,
     database: database,
     dynamoDBService: dynamoDBService,
+    exchangeRateService: exchangeRateService,
     syncService: syncService,
     themeModeNotifier: themeModeNotifier,
   ));
@@ -119,6 +131,7 @@ class MyApp extends StatefulWidget {
   final SettingsService settingsService;
   final DatabaseService database;
   final DynamoDBService dynamoDBService;
+  final ExchangeRateService exchangeRateService;
   final SyncService syncService;
   final ThemeModeNotifier themeModeNotifier;
 
@@ -127,6 +140,7 @@ class MyApp extends StatefulWidget {
     required this.settingsService,
     required this.database,
     required this.dynamoDBService,
+    required this.exchangeRateService,
     required this.syncService,
     required this.themeModeNotifier,
   });
@@ -201,6 +215,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             settingsService: widget.settingsService,
             database: widget.database,
             dynamoDBService: widget.dynamoDBService,
+            exchangeRateService: widget.exchangeRateService,
             syncService: widget.syncService,
             themeModeNotifier: widget.themeModeNotifier,
           ),
