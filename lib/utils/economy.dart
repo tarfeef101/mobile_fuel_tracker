@@ -1,4 +1,5 @@
 import '../models/fill_entry.dart';
+import 'unit_conversion.dart';
 
 /// Aggregated fuel-economy metrics for a set of entries. Distances come from
 /// consecutive odometer readings, corrected by the tire size offset, and are
@@ -20,13 +21,6 @@ class EconomyMetrics {
     required this.averageCostPerFill,
   });
 }
-
-const double _kmPerMile = 1.609344;
-const double _litersPerGallon = 3.785411784;
-
-double _kmFactor(String? unit) => unit == 'miles' ? _kmPerMile : 1.0;
-
-double _litersFactor(String? unit) => unit == 'gal' ? _litersPerGallon : 1.0;
 
 List<FillEntry> _sortedChronological(List<FillEntry> entries) {
   final sorted = [...entries]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
@@ -54,29 +48,38 @@ double? entryFuelAmount(FillEntry entry) {
 double? _segmentDistanceKm(FillEntry entry, double? previousOdometer, double tireOffset) {
   if (entry.odometer == null || previousOdometer == null) return null;
   final distance =
-      (entry.odometer! - previousOdometer) * (1 + tireOffset) * _kmFactor(entry.distanceUnit);
+      (entry.odometer! - previousOdometer) * (1 + tireOffset) * convertDistance(1.0, entry.distanceUnit, 'km');
   return distance > 0 ? distance : null;
 }
 
 /// [tireOffsetByVehicle] maps vehicleId to that vehicle's tire size offset;
-/// entries without a configured offset use 0.
+/// entries without a configured offset use 0. When [currency] is given,
+/// costs are converted into it via [ratesByBase]; entries without an
+/// available rate fall back to their raw cost.
 EconomyMetrics computeEconomy(
   List<FillEntry> entries, {
   Map<String, double> tireOffsetByVehicle = const {},
+  String? currency,
+  Map<String, Map<String, double>>? ratesByBase,
 }) {
   var distanceKm = 0.0;
   var fuelLiters = 0.0;
   var cost = 0.0;
 
+  double costIn(FillEntry entry) =>
+      currency != null
+          ? convertCurrencyAmount(entry.totalCost, entry.currency, currency, ratesByBase: ratesByBase) ?? entry.totalCost
+          : entry.totalCost;
+
   for (final segment in _segments(entries)) {
     final entry = segment.entry;
-    cost += entry.totalCost;
+    cost += costIn(entry);
     final amount = entryFuelAmount(entry);
     if (amount != null) {
       final distance = _segmentDistanceKm(entry, segment.previousOdometer, tireOffsetByVehicle[entry.vehicleId] ?? 0);
       if (distance != null) {
         distanceKm += distance;
-        fuelLiters += amount * _litersFactor(entry.capacityUnit);
+        fuelLiters += convertCapacity(amount, entry.capacityUnit, 'L');
       }
     }
   }
@@ -104,7 +107,7 @@ List<double> economyTrend(
     if (amount != null) {
       final distance = _segmentDistanceKm(entry, segment.previousOdometer, tireOffsetByVehicle[entry.vehicleId] ?? 0);
       if (distance != null) {
-        values.add(amount * _litersFactor(entry.capacityUnit) / distance * 100);
+        values.add(convertCapacity(amount, entry.capacityUnit, 'L') / distance * 100);
       }
     }
   }
@@ -137,7 +140,7 @@ Map<String, FillEconomy> fillEconomies(
     final distance = _segmentDistanceKm(entry, segment.previousOdometer, tireOffsetByVehicle[entry.vehicleId] ?? 0);
     if (distance != null) {
       economies[entry.id] = FillEconomy(
-        consumptionPer100Km: amount * _litersFactor(entry.capacityUnit) / distance * 100,
+        consumptionPer100Km: convertCapacity(amount, entry.capacityUnit, 'L') / distance * 100,
         distanceKm: distance,
       );
     }
@@ -147,15 +150,24 @@ Map<String, FillEconomy> fillEconomies(
 }
 
 /// Total cost divided by total fuel volume — the volume-weighted average
-/// price per unit of capacity.
-double? averageCostPerUnit(List<FillEntry> entries) {
+/// price per unit of capacity. With [currency] and [capacityUnit] given,
+/// the result is in default currency per default capacity unit (entries
+/// without an available rate fall back to their raw cost).
+double? averageCostPerUnit(
+  List<FillEntry> entries, {
+  String? currency,
+  String? capacityUnit,
+  Map<String, Map<String, double>>? ratesByBase,
+}) {
   var cost = 0.0;
   var volume = 0.0;
   for (final entry in entries) {
     final amount = entryFuelAmount(entry);
     if (amount == null || amount <= 0) continue;
-    cost += entry.totalCost;
-    volume += amount;
+    cost += currency != null
+        ? convertCurrencyAmount(entry.totalCost, entry.currency, currency, ratesByBase: ratesByBase) ?? entry.totalCost
+        : entry.totalCost;
+    volume += capacityUnit != null ? convertCapacity(amount, entry.capacityUnit, capacityUnit) : amount;
   }
   return volume > 0 ? cost / volume : null;
 }
@@ -169,5 +181,5 @@ String formatConsumption(double per100Km, {required bool miles}) {
 
 /// Format a km distance in the user's distance unit.
 String formatDistance(double km, {required bool miles}) {
-  return miles ? '${(km / _kmPerMile).toStringAsFixed(1)} mi' : '${km.toStringAsFixed(1)} km';
+  return miles ? '${convertDistance(km, 'km', 'miles').toStringAsFixed(1)} mi' : '${km.toStringAsFixed(1)} km';
 }

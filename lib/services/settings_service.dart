@@ -1,7 +1,10 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-class SettingsService {
+/// Display preferences. Extends [ChangeNotifier] so screens can rebuild when
+/// a default unit or currency changes (mirrors [ThemeModeNotifier]).
+class SettingsService extends ChangeNotifier {
   static const String _fuelTypeKey = 'fuel_type';
   static const String _distanceUnitKey = 'distance_unit';
   static const String _capacityUnitKey = 'capacity_unit';
@@ -46,6 +49,7 @@ class SettingsService {
   // Set current distance unit
   Future<void> setDistanceUnit(String distanceUnit) async {
     await _preferences.setString(_distanceUnitKey, distanceUnit);
+    notifyListeners();
   }
 
   // Get current capacity unit
@@ -56,6 +60,7 @@ class SettingsService {
   // Set current capacity unit
   Future<void> setCapacityUnit(String capacityUnit) async {
     await _preferences.setString(_capacityUnitKey, capacityUnit);
+    notifyListeners();
   }
 
   // Get current currency
@@ -66,6 +71,7 @@ class SettingsService {
   // Set current currency
   Future<void> setCurrency(String currency) async {
     await _preferences.setString(_currencyKey, currency);
+    notifyListeners();
   }
 
   // Get AWS access key ID
@@ -175,6 +181,7 @@ class SettingsService {
   Future<void> clearAllSettings() async {
     await _preferences.clear();
     await _secureStorage.deleteAll();
+    notifyListeners();
   }
 
   // Check if AWS credentials are set

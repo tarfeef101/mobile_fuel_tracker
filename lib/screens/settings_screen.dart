@@ -10,16 +10,19 @@ import 'package:share_plus/share_plus.dart';
 import '../main.dart';
 import '../models/fill_entry.dart';
 import '../models/vehicle.dart';
+import '../services/exchange_rate_service.dart';
 import '../services/settings_service.dart';
 import '../services/sync_service.dart';
 import '../data/database.dart';
 import '../data/dynamodb_service.dart';
+import '../widgets/option_sheet.dart';
 import 'vehicle_list_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final SettingsService settingsService;
   final DatabaseService database;
   final DynamoDBService dynamoDBService;
+  final ExchangeRateService exchangeRateService;
   final SyncService syncService;
   final ThemeModeNotifier themeModeNotifier;
 
@@ -28,6 +31,7 @@ class SettingsScreen extends StatefulWidget {
     required this.settingsService,
     required this.database,
     required this.dynamoDBService,
+    required this.exchangeRateService,
     required this.syncService,
     required this.themeModeNotifier,
   });
@@ -111,13 +115,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 20),
 
-            _buildCurrencySelector(),
-            const SizedBox(height: 15),
-
-            _buildDistanceUnitSelector(),
-            const SizedBox(height: 15),
-
-            _buildCapacityUnitSelector(),
+            // Rebuild the unit subtitles as soon as a default changes.
+            ListenableBuilder(
+              listenable: _settingsService,
+              builder: (context, _) => Column(
+                children: [
+                  _buildCurrencySelector(),
+                  const SizedBox(height: 15),
+                  _buildDistanceUnitSelector(),
+                  const SizedBox(height: 15),
+                  _buildCapacityUnitSelector(),
+                ],
+              ),
+            ),
             const SizedBox(height: 15),
 
             _buildThemeSelector(),
@@ -570,53 +580,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _showCurrencySelector() {
-    _showOptionSheet('Select Currency', const ['USD', 'EUR', 'GBP', 'CAD', 'AUD'],
-        (value) => _settingsService.setCurrency(value));
+  Future<void> _showCurrencySelector() async {
+    final options = await widget.exchangeRateService.currencyCodes();
+    if (!mounted) return;
+    showOptionSheet(
+      context,
+      title: 'Select Currency',
+      options: options,
+      selected: _settingsService.getCurrency(),
+      onSelected: _settingsService.setCurrency,
+    );
   }
 
   void _showDistanceUnitSelector() {
-    _showOptionSheet('Select Distance Unit', const ['km', 'miles'],
-        (value) => _settingsService.setDistanceUnit(value));
+    showOptionSheet(
+      context,
+      title: 'Select Distance Unit',
+      options: const ['km', 'miles'],
+      selected: _settingsService.getDistanceUnit(),
+      onSelected: _settingsService.setDistanceUnit,
+    );
   }
 
   void _showCapacityUnitSelector() {
-    _showOptionSheet('Select Capacity Unit', const ['L', 'gal', 'mL'],
-        (value) => _settingsService.setCapacityUnit(value));
-  }
-
-  void _showOptionSheet(String title, List<String> options, Future<void> Function(String) onSelected) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return Container(
-          padding: EdgeInsets.only(
-            left: 16.0,
-            top: 16.0,
-            right: 16.0,
-            bottom: MediaQuery.of(context).padding.bottom + 16.0,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 20),
-              ...options.map((option) {
-                return ListTile(
-                  title: Text(option),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    onSelected(option);
-                  },
-                );
-              }).toList(),
-            ],
-          ),
-        );
-      },
+    showOptionSheet(
+      context,
+      title: 'Select Capacity Unit',
+      options: const ['L', 'gal', 'mL'],
+      selected: _settingsService.getCapacityUnit(),
+      onSelected: _settingsService.setCapacityUnit,
     );
   }
 
