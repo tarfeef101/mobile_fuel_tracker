@@ -12,6 +12,8 @@ FillEntry _entry({
   String currency = 'USD',
   String distanceUnit = 'km',
   String capacityUnit = 'L',
+  double? exchangeRateAtEntry,
+  String? defaultCurrencyAtEntry,
 }) {
   return FillEntry(
     id: id,
@@ -25,6 +27,8 @@ FillEntry _entry({
     capacityUnit: capacityUnit,
     deviceId: 'device',
     vehicleId: vehicleId,
+    exchangeRateAtEntry: exchangeRateAtEntry,
+    defaultCurrencyAtEntry: defaultCurrencyAtEntry,
   );
 }
 
@@ -160,6 +164,28 @@ void main() {
       // 10 L over 1000 km == 1.0 L/100km (was 1000 L/100km before the fix).
       expect(fillEconomies(entries)['a2']!.consumptionPer100Km, closeTo(1.0, 1e-9));
       expect(computeEconomy(entries).totalFuelLiters, closeTo(10.0, 1e-9));
+    });
+
+    test('a pinned rate wins over the live rate map', () {
+      final entries = [
+        _entry(id: 'a1', timestamp: DateTime(2026, 1, 1), vehicleId: 'A', totalCost: 10.0),
+        // Pinned at 1.20 when recorded; the live map says 1.08.
+        _entry(id: 'a2', timestamp: DateTime(2026, 1, 15), vehicleId: 'A', fuelAmount: 10, totalCost: 100.0, currency: 'EUR', exchangeRateAtEntry: 1.20, defaultCurrencyAtEntry: 'USD'),
+      ];
+
+      expect(computeEconomy(entries, currency: 'USD', ratesByBase: ratesByBase).totalCost, 130.0);
+      expect(
+          averageCostPerUnit(entries, currency: 'USD', capacityUnit: 'L', ratesByBase: ratesByBase),
+          closeTo(12.0, 1e-9));
+    });
+
+    test('a pin against another default currency falls back to the live map', () {
+      final entries = [
+        // Pinned for EUR as the default, but the app now shows USD.
+        _entry(id: 'a1', timestamp: DateTime(2026, 1, 1), vehicleId: 'A', totalCost: 100.0, currency: 'EUR', exchangeRateAtEntry: 1.20, defaultCurrencyAtEntry: 'GBP'),
+      ];
+
+      expect(computeEconomy(entries, currency: 'USD', ratesByBase: ratesByBase).totalCost, closeTo(108.0, 1e-9));
     });
   });
 }

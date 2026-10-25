@@ -182,6 +182,28 @@ class $FillEntriesTable extends FillEntries
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _exchangeRateAtEntryMeta =
+      const VerificationMeta('exchangeRateAtEntry');
+  @override
+  late final GeneratedColumn<double> exchangeRateAtEntry =
+      GeneratedColumn<double>(
+        'exchange_rate_at_entry',
+        aliasedName,
+        true,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _defaultCurrencyAtEntryMeta =
+      const VerificationMeta('defaultCurrencyAtEntry');
+  @override
+  late final GeneratedColumn<String> defaultCurrencyAtEntry =
+      GeneratedColumn<String>(
+        'default_currency_at_entry',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -200,6 +222,8 @@ class $FillEntriesTable extends FillEntries
     syncedAt,
     deviceId,
     vehicleId,
+    exchangeRateAtEntry,
+    defaultCurrencyAtEntry,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -335,6 +359,24 @@ class $FillEntriesTable extends FillEntries
     } else if (isInserting) {
       context.missing(_vehicleIdMeta);
     }
+    if (data.containsKey('exchange_rate_at_entry')) {
+      context.handle(
+        _exchangeRateAtEntryMeta,
+        exchangeRateAtEntry.isAcceptableOrUnknown(
+          data['exchange_rate_at_entry']!,
+          _exchangeRateAtEntryMeta,
+        ),
+      );
+    }
+    if (data.containsKey('default_currency_at_entry')) {
+      context.handle(
+        _defaultCurrencyAtEntryMeta,
+        defaultCurrencyAtEntry.isAcceptableOrUnknown(
+          data['default_currency_at_entry']!,
+          _defaultCurrencyAtEntryMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -408,6 +450,14 @@ class $FillEntriesTable extends FillEntries
         DriftSqlType.string,
         data['${effectivePrefix}vehicle_id'],
       )!,
+      exchangeRateAtEntry: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}exchange_rate_at_entry'],
+      ),
+      defaultCurrencyAtEntry: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}default_currency_at_entry'],
+      ),
     );
   }
 
@@ -434,6 +484,8 @@ class FillEntryRow extends DataClass implements Insertable<FillEntryRow> {
   final DateTime? syncedAt;
   final String deviceId;
   final String vehicleId;
+  final double? exchangeRateAtEntry;
+  final String? defaultCurrencyAtEntry;
   const FillEntryRow({
     required this.id,
     required this.timestamp,
@@ -451,6 +503,8 @@ class FillEntryRow extends DataClass implements Insertable<FillEntryRow> {
     this.syncedAt,
     required this.deviceId,
     required this.vehicleId,
+    this.exchangeRateAtEntry,
+    this.defaultCurrencyAtEntry,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -489,6 +543,14 @@ class FillEntryRow extends DataClass implements Insertable<FillEntryRow> {
     }
     map['device_id'] = Variable<String>(deviceId);
     map['vehicle_id'] = Variable<String>(vehicleId);
+    if (!nullToAbsent || exchangeRateAtEntry != null) {
+      map['exchange_rate_at_entry'] = Variable<double>(exchangeRateAtEntry);
+    }
+    if (!nullToAbsent || defaultCurrencyAtEntry != null) {
+      map['default_currency_at_entry'] = Variable<String>(
+        defaultCurrencyAtEntry,
+      );
+    }
     return map;
   }
 
@@ -528,6 +590,12 @@ class FillEntryRow extends DataClass implements Insertable<FillEntryRow> {
           : Value(syncedAt),
       deviceId: Value(deviceId),
       vehicleId: Value(vehicleId),
+      exchangeRateAtEntry: exchangeRateAtEntry == null && nullToAbsent
+          ? const Value.absent()
+          : Value(exchangeRateAtEntry),
+      defaultCurrencyAtEntry: defaultCurrencyAtEntry == null && nullToAbsent
+          ? const Value.absent()
+          : Value(defaultCurrencyAtEntry),
     );
   }
 
@@ -557,6 +625,12 @@ class FillEntryRow extends DataClass implements Insertable<FillEntryRow> {
       syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
       deviceId: serializer.fromJson<String>(json['deviceId']),
       vehicleId: serializer.fromJson<String>(json['vehicleId']),
+      exchangeRateAtEntry: serializer.fromJson<double?>(
+        json['exchangeRateAtEntry'],
+      ),
+      defaultCurrencyAtEntry: serializer.fromJson<String?>(
+        json['defaultCurrencyAtEntry'],
+      ),
     );
   }
   @override
@@ -579,6 +653,10 @@ class FillEntryRow extends DataClass implements Insertable<FillEntryRow> {
       'syncedAt': serializer.toJson<DateTime?>(syncedAt),
       'deviceId': serializer.toJson<String>(deviceId),
       'vehicleId': serializer.toJson<String>(vehicleId),
+      'exchangeRateAtEntry': serializer.toJson<double?>(exchangeRateAtEntry),
+      'defaultCurrencyAtEntry': serializer.toJson<String?>(
+        defaultCurrencyAtEntry,
+      ),
     };
   }
 
@@ -599,6 +677,8 @@ class FillEntryRow extends DataClass implements Insertable<FillEntryRow> {
     Value<DateTime?> syncedAt = const Value.absent(),
     String? deviceId,
     String? vehicleId,
+    Value<double?> exchangeRateAtEntry = const Value.absent(),
+    Value<String?> defaultCurrencyAtEntry = const Value.absent(),
   }) => FillEntryRow(
     id: id ?? this.id,
     timestamp: timestamp ?? this.timestamp,
@@ -620,6 +700,12 @@ class FillEntryRow extends DataClass implements Insertable<FillEntryRow> {
     syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
     deviceId: deviceId ?? this.deviceId,
     vehicleId: vehicleId ?? this.vehicleId,
+    exchangeRateAtEntry: exchangeRateAtEntry.present
+        ? exchangeRateAtEntry.value
+        : this.exchangeRateAtEntry,
+    defaultCurrencyAtEntry: defaultCurrencyAtEntry.present
+        ? defaultCurrencyAtEntry.value
+        : this.defaultCurrencyAtEntry,
   );
   FillEntryRow copyWithCompanion(FillEntriesCompanion data) {
     return FillEntryRow(
@@ -651,6 +737,12 @@ class FillEntryRow extends DataClass implements Insertable<FillEntryRow> {
       syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
       deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
       vehicleId: data.vehicleId.present ? data.vehicleId.value : this.vehicleId,
+      exchangeRateAtEntry: data.exchangeRateAtEntry.present
+          ? data.exchangeRateAtEntry.value
+          : this.exchangeRateAtEntry,
+      defaultCurrencyAtEntry: data.defaultCurrencyAtEntry.present
+          ? data.defaultCurrencyAtEntry.value
+          : this.defaultCurrencyAtEntry,
     );
   }
 
@@ -672,7 +764,9 @@ class FillEntryRow extends DataClass implements Insertable<FillEntryRow> {
           ..write('notes: $notes, ')
           ..write('syncedAt: $syncedAt, ')
           ..write('deviceId: $deviceId, ')
-          ..write('vehicleId: $vehicleId')
+          ..write('vehicleId: $vehicleId, ')
+          ..write('exchangeRateAtEntry: $exchangeRateAtEntry, ')
+          ..write('defaultCurrencyAtEntry: $defaultCurrencyAtEntry')
           ..write(')'))
         .toString();
   }
@@ -695,6 +789,8 @@ class FillEntryRow extends DataClass implements Insertable<FillEntryRow> {
     syncedAt,
     deviceId,
     vehicleId,
+    exchangeRateAtEntry,
+    defaultCurrencyAtEntry,
   );
   @override
   bool operator ==(Object other) =>
@@ -715,7 +811,9 @@ class FillEntryRow extends DataClass implements Insertable<FillEntryRow> {
           other.notes == this.notes &&
           other.syncedAt == this.syncedAt &&
           other.deviceId == this.deviceId &&
-          other.vehicleId == this.vehicleId);
+          other.vehicleId == this.vehicleId &&
+          other.exchangeRateAtEntry == this.exchangeRateAtEntry &&
+          other.defaultCurrencyAtEntry == this.defaultCurrencyAtEntry);
 }
 
 class FillEntriesCompanion extends UpdateCompanion<FillEntryRow> {
@@ -735,6 +833,8 @@ class FillEntriesCompanion extends UpdateCompanion<FillEntryRow> {
   final Value<DateTime?> syncedAt;
   final Value<String> deviceId;
   final Value<String> vehicleId;
+  final Value<double?> exchangeRateAtEntry;
+  final Value<String?> defaultCurrencyAtEntry;
   final Value<int> rowid;
   const FillEntriesCompanion({
     this.id = const Value.absent(),
@@ -753,6 +853,8 @@ class FillEntriesCompanion extends UpdateCompanion<FillEntryRow> {
     this.syncedAt = const Value.absent(),
     this.deviceId = const Value.absent(),
     this.vehicleId = const Value.absent(),
+    this.exchangeRateAtEntry = const Value.absent(),
+    this.defaultCurrencyAtEntry = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   FillEntriesCompanion.insert({
@@ -772,6 +874,8 @@ class FillEntriesCompanion extends UpdateCompanion<FillEntryRow> {
     this.syncedAt = const Value.absent(),
     required String deviceId,
     required String vehicleId,
+    this.exchangeRateAtEntry = const Value.absent(),
+    this.defaultCurrencyAtEntry = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        timestamp = Value(timestamp),
@@ -797,6 +901,8 @@ class FillEntriesCompanion extends UpdateCompanion<FillEntryRow> {
     Expression<DateTime>? syncedAt,
     Expression<String>? deviceId,
     Expression<String>? vehicleId,
+    Expression<double>? exchangeRateAtEntry,
+    Expression<String>? defaultCurrencyAtEntry,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -817,6 +923,10 @@ class FillEntriesCompanion extends UpdateCompanion<FillEntryRow> {
       if (syncedAt != null) 'synced_at': syncedAt,
       if (deviceId != null) 'device_id': deviceId,
       if (vehicleId != null) 'vehicle_id': vehicleId,
+      if (exchangeRateAtEntry != null)
+        'exchange_rate_at_entry': exchangeRateAtEntry,
+      if (defaultCurrencyAtEntry != null)
+        'default_currency_at_entry': defaultCurrencyAtEntry,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -838,6 +948,8 @@ class FillEntriesCompanion extends UpdateCompanion<FillEntryRow> {
     Value<DateTime?>? syncedAt,
     Value<String>? deviceId,
     Value<String>? vehicleId,
+    Value<double?>? exchangeRateAtEntry,
+    Value<String?>? defaultCurrencyAtEntry,
     Value<int>? rowid,
   }) {
     return FillEntriesCompanion(
@@ -857,6 +969,9 @@ class FillEntriesCompanion extends UpdateCompanion<FillEntryRow> {
       syncedAt: syncedAt ?? this.syncedAt,
       deviceId: deviceId ?? this.deviceId,
       vehicleId: vehicleId ?? this.vehicleId,
+      exchangeRateAtEntry: exchangeRateAtEntry ?? this.exchangeRateAtEntry,
+      defaultCurrencyAtEntry:
+          defaultCurrencyAtEntry ?? this.defaultCurrencyAtEntry,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -912,6 +1027,16 @@ class FillEntriesCompanion extends UpdateCompanion<FillEntryRow> {
     if (vehicleId.present) {
       map['vehicle_id'] = Variable<String>(vehicleId.value);
     }
+    if (exchangeRateAtEntry.present) {
+      map['exchange_rate_at_entry'] = Variable<double>(
+        exchangeRateAtEntry.value,
+      );
+    }
+    if (defaultCurrencyAtEntry.present) {
+      map['default_currency_at_entry'] = Variable<String>(
+        defaultCurrencyAtEntry.value,
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -937,6 +1062,8 @@ class FillEntriesCompanion extends UpdateCompanion<FillEntryRow> {
           ..write('syncedAt: $syncedAt, ')
           ..write('deviceId: $deviceId, ')
           ..write('vehicleId: $vehicleId, ')
+          ..write('exchangeRateAtEntry: $exchangeRateAtEntry, ')
+          ..write('defaultCurrencyAtEntry: $defaultCurrencyAtEntry, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1909,6 +2036,8 @@ typedef $$FillEntriesTableCreateCompanionBuilder =
       Value<DateTime?> syncedAt,
       required String deviceId,
       required String vehicleId,
+      Value<double?> exchangeRateAtEntry,
+      Value<String?> defaultCurrencyAtEntry,
       Value<int> rowid,
     });
 typedef $$FillEntriesTableUpdateCompanionBuilder =
@@ -1929,6 +2058,8 @@ typedef $$FillEntriesTableUpdateCompanionBuilder =
       Value<DateTime?> syncedAt,
       Value<String> deviceId,
       Value<String> vehicleId,
+      Value<double?> exchangeRateAtEntry,
+      Value<String?> defaultCurrencyAtEntry,
       Value<int> rowid,
     });
 
@@ -2018,6 +2149,16 @@ class $$FillEntriesTableFilterComposer
 
   ColumnFilters<String> get vehicleId => $composableBuilder(
     column: $table.vehicleId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get exchangeRateAtEntry => $composableBuilder(
+    column: $table.exchangeRateAtEntry,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get defaultCurrencyAtEntry => $composableBuilder(
+    column: $table.defaultCurrencyAtEntry,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2110,6 +2251,16 @@ class $$FillEntriesTableOrderingComposer
     column: $table.vehicleId,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<double> get exchangeRateAtEntry => $composableBuilder(
+    column: $table.exchangeRateAtEntry,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get defaultCurrencyAtEntry => $composableBuilder(
+    column: $table.defaultCurrencyAtEntry,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$FillEntriesTableAnnotationComposer
@@ -2180,6 +2331,16 @@ class $$FillEntriesTableAnnotationComposer
 
   GeneratedColumn<String> get vehicleId =>
       $composableBuilder(column: $table.vehicleId, builder: (column) => column);
+
+  GeneratedColumn<double> get exchangeRateAtEntry => $composableBuilder(
+    column: $table.exchangeRateAtEntry,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get defaultCurrencyAtEntry => $composableBuilder(
+    column: $table.defaultCurrencyAtEntry,
+    builder: (column) => column,
+  );
 }
 
 class $$FillEntriesTableTableManager
@@ -2229,6 +2390,8 @@ class $$FillEntriesTableTableManager
                 Value<DateTime?> syncedAt = const Value.absent(),
                 Value<String> deviceId = const Value.absent(),
                 Value<String> vehicleId = const Value.absent(),
+                Value<double?> exchangeRateAtEntry = const Value.absent(),
+                Value<String?> defaultCurrencyAtEntry = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => FillEntriesCompanion(
                 id: id,
@@ -2247,6 +2410,8 @@ class $$FillEntriesTableTableManager
                 syncedAt: syncedAt,
                 deviceId: deviceId,
                 vehicleId: vehicleId,
+                exchangeRateAtEntry: exchangeRateAtEntry,
+                defaultCurrencyAtEntry: defaultCurrencyAtEntry,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2267,6 +2432,8 @@ class $$FillEntriesTableTableManager
                 Value<DateTime?> syncedAt = const Value.absent(),
                 required String deviceId,
                 required String vehicleId,
+                Value<double?> exchangeRateAtEntry = const Value.absent(),
+                Value<String?> defaultCurrencyAtEntry = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => FillEntriesCompanion.insert(
                 id: id,
@@ -2285,6 +2452,8 @@ class $$FillEntriesTableTableManager
                 syncedAt: syncedAt,
                 deviceId: deviceId,
                 vehicleId: vehicleId,
+                exchangeRateAtEntry: exchangeRateAtEntry,
+                defaultCurrencyAtEntry: defaultCurrencyAtEntry,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

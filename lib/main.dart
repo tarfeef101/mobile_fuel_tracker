@@ -101,6 +101,15 @@ void main() async {
   );
   await syncService.scheduleBackgroundSync();
 
+  // Pin the exchange rate on entries saved before rate pinning existed.
+  // Best effort: a failure here must not block start-up.
+  try {
+    await database.pinExchangeRates(
+      defaultCurrency: settingsService.getCurrency(),
+      rateFor: exchangeRateService.getRates,
+    );
+  } catch (_) {}
+
   final themeMode = switch (settingsService.getThemeMode()) {
     'light' => ThemeMode.light,
     'dark' => ThemeMode.dark,

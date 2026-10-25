@@ -44,14 +44,16 @@ double _fromLiters(double liters, String? unit) {
 
 /// Convert a currency amount using [ratesByBase] (base code to table of
 /// target code to rate). Identity when both codes match; null when no rate
-/// is available.
+/// is available. A [pinnedRate] (rate recorded with the entry) takes
+/// precedence over the live table.
 double? convertCurrencyAmount(
   double amount,
   String from,
   String to, {
+  double? pinnedRate,
   Map<String, Map<String, double>>? ratesByBase,
 }) {
   if (from == to) return amount;
-  final rate = ratesByBase?[from]?[to];
+  final rate = pinnedRate ?? ratesByBase?[from]?[to];
   return rate == null ? null : amount * rate;
 }

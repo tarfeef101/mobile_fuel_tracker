@@ -67,5 +67,23 @@ void main() {
       expect(convertCurrencyAmount(100, 'JPY', 'USD', ratesByBase: ratesByBase), isNull);
       expect(convertCurrencyAmount(100, 'EUR', 'USD'), isNull);
     });
+
+    test('a pinned rate wins over the live rate map', () {
+      expect(convertCurrencyAmount(100, 'EUR', 'USD', pinnedRate: 1.2, ratesByBase: ratesByBase),
+          closeTo(120, 1e-9));
+    });
+
+    test('falls back to the live rate map when no rate is pinned', () {
+      expect(convertCurrencyAmount(100, 'EUR', 'USD', pinnedRate: null, ratesByBase: ratesByBase),
+          closeTo(108, 1e-9));
+    });
+
+    test('null when neither a pinned rate nor a map is available', () {
+      expect(convertCurrencyAmount(100, 'EUR', 'USD', pinnedRate: null), isNull);
+    });
+
+    test('identity conversion ignores the pinned rate', () {
+      expect(convertCurrencyAmount(100, 'USD', 'USD', pinnedRate: 1.2), 100);
+    });
   });
 }

@@ -37,7 +37,9 @@ class EntryCardWithVehicle extends StatelessWidget {
     final isLiquid = entry.fuelType == 'liquid';
     final amount = isLiquid ? entry.fuelAmount : entry.energyAdded;
     final convertedCost = convertCurrencyAmount(entry.totalCost, entry.currency,
-        defaultCurrency, ratesByBase: ratesByBase);
+        defaultCurrency,
+        pinnedRate: entry.pinnedRateFor(defaultCurrency),
+        ratesByBase: ratesByBase);
     final costIsConverted = convertedCost != null && entry.currency != defaultCurrency;
     return Card(
       margin: const EdgeInsets.all(8),

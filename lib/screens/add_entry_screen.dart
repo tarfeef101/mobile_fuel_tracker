@@ -564,6 +564,33 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
     }
 
     final existing = widget.entryToEdit;
+
+    // Pin the rate at record time so displayed values don't drift as live
+    // rates change; keep an edit's existing pin when the currency is
+    // unchanged, otherwise fetch a fresh one.
+    double? pinnedRate;
+    String? pinnedDefault;
+    final defaultCurrency = widget.settingsService.getCurrency();
+    if (_currency.toUpperCase() != defaultCurrency.toUpperCase()) {
+      if (existing != null &&
+          existing.currency.toUpperCase() == _currency.toUpperCase() &&
+          existing.exchangeRateAtEntry != null &&
+          existing.defaultCurrencyAtEntry != null) {
+        pinnedRate = existing.exchangeRateAtEntry;
+        pinnedDefault = existing.defaultCurrencyAtEntry;
+      } else {
+        final rates = await _ratesFor(_currency);
+        if (!mounted) return;
+        final rate = rates?[defaultCurrency.toUpperCase()];
+        // Offline with no cached rate: save unpinned; the start-up backfill
+        // pins it on the next launch.
+        if (rate != null) {
+          pinnedRate = rate;
+          pinnedDefault = defaultCurrency.toUpperCase();
+        }
+      }
+    }
+
     final entry = FillEntry(
       id: existing?.id ?? const Uuid().v4(),
       timestamp: existing?.timestamp ?? DateTime.now(),
@@ -582,6 +609,8 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
       syncedAt: null,
       deviceId: existing?.deviceId ?? widget.settingsService.getDeviceId(),
       vehicleId: _selectedVehicleId,
+      exchangeRateAtEntry: pinnedRate,
+      defaultCurrencyAtEntry: pinnedDefault,
     );
 
     try {

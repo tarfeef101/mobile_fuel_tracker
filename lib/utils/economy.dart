@@ -54,8 +54,9 @@ double? _segmentDistanceKm(FillEntry entry, double? previousOdometer, double tir
 
 /// [tireOffsetByVehicle] maps vehicleId to that vehicle's tire size offset;
 /// entries without a configured offset use 0. When [currency] is given,
-/// costs are converted into it via [ratesByBase]; entries without an
-/// available rate fall back to their raw cost.
+/// costs are converted into it — preferring the rate pinned on the entry at
+/// record time, then [ratesByBase]; entries without any rate fall back to
+/// their raw cost.
 EconomyMetrics computeEconomy(
   List<FillEntry> entries, {
   Map<String, double> tireOffsetByVehicle = const {},
@@ -68,7 +69,9 @@ EconomyMetrics computeEconomy(
 
   double costIn(FillEntry entry) =>
       currency != null
-          ? convertCurrencyAmount(entry.totalCost, entry.currency, currency, ratesByBase: ratesByBase) ?? entry.totalCost
+          ? convertCurrencyAmount(entry.totalCost, entry.currency, currency,
+                  pinnedRate: entry.pinnedRateFor(currency), ratesByBase: ratesByBase) ??
+              entry.totalCost
           : entry.totalCost;
 
   for (final segment in _segments(entries)) {
@@ -151,8 +154,9 @@ Map<String, FillEconomy> fillEconomies(
 
 /// Total cost divided by total fuel volume — the volume-weighted average
 /// price per unit of capacity. With [currency] and [capacityUnit] given,
-/// the result is in default currency per default capacity unit (entries
-/// without an available rate fall back to their raw cost).
+/// the result is in default currency per default capacity unit, using each
+/// entry's pinned rate before [ratesByBase] (entries without any rate fall
+/// back to their raw cost).
 double? averageCostPerUnit(
   List<FillEntry> entries, {
   String? currency,
@@ -165,7 +169,9 @@ double? averageCostPerUnit(
     final amount = entryFuelAmount(entry);
     if (amount == null || amount <= 0) continue;
     cost += currency != null
-        ? convertCurrencyAmount(entry.totalCost, entry.currency, currency, ratesByBase: ratesByBase) ?? entry.totalCost
+        ? convertCurrencyAmount(entry.totalCost, entry.currency, currency,
+                pinnedRate: entry.pinnedRateFor(currency), ratesByBase: ratesByBase) ??
+            entry.totalCost
         : entry.totalCost;
     volume += capacityUnit != null ? convertCapacity(amount, entry.capacityUnit, capacityUnit) : amount;
   }

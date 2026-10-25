@@ -32,6 +32,8 @@ class FillEntries extends Table {
   DateTimeColumn get syncedAt => dateTime().nullable()();
   TextColumn get deviceId => text()();
   TextColumn get vehicleId => text()();
+  RealColumn get exchangeRateAtEntry => real().nullable()();
+  TextColumn get defaultCurrencyAtEntry => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -98,7 +100,7 @@ class DatabaseService extends _$DatabaseService {
   }
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -110,8 +112,47 @@ class DatabaseService extends _$DatabaseService {
           if (from < 3) {
             await m.createTable(pendingDeletions);
           }
+          if (from < 4) {
+            await m.addColumn(fillEntries, fillEntries.exchangeRateAtEntry);
+            await m.addColumn(fillEntries, fillEntries.defaultCurrencyAtEntry);
+          }
         },
       );
+
+  /// Pin the exchange rate on entries saved before rate pinning existed
+  /// (their [FillEntries.exchangeRateAtEntry] is still null), using the
+  /// current rate so history stops drifting. Idempotent — runs at every
+  /// start and self-heals entries that were offline on a previous pass.
+  /// [rateFor] takes a base currency code and returns that rate table (or
+  /// null when no rate is available).
+  Future<void> pinExchangeRates({
+    required String defaultCurrency,
+    required Future<Map<String, double>?> Function(String base) rateFor,
+  }) async {
+    final rows = await (select(fillEntries)
+          ..where((t) => t.exchangeRateAtEntry.isNull()))
+        .map((row) => (id: row.id, currency: row.currency.toUpperCase()))
+        .get();
+    if (rows.isEmpty) return;
+
+    final defaultKey = defaultCurrency.toUpperCase();
+    final rateByBase = <String, double?>{};
+    for (final currency in {
+      for (final row in rows) row.currency
+    }..remove(defaultKey)) {
+      rateByBase[currency] = (await rateFor(currency))?[defaultKey];
+    }
+
+    for (final row in rows) {
+      final rate = rateByBase[row.currency];
+      if (rate == null) continue;
+      await (update(fillEntries)..where((t) => t.id.equals(row.id)))
+          .write(FillEntriesCompanion(
+        exchangeRateAtEntry: Value(rate),
+        defaultCurrencyAtEntry: Value(defaultKey),
+      ));
+    }
+  }
 
   FillEntry _entryFromRow(FillEntryRow row) {
     return FillEntry(
@@ -131,6 +172,8 @@ class DatabaseService extends _$DatabaseService {
       syncedAt: row.syncedAt,
       deviceId: row.deviceId,
       vehicleId: row.vehicleId,
+      exchangeRateAtEntry: row.exchangeRateAtEntry,
+      defaultCurrencyAtEntry: row.defaultCurrencyAtEntry,
     );
   }
 
@@ -169,6 +212,8 @@ class DatabaseService extends _$DatabaseService {
       syncedAt: Value(entry.syncedAt),
       deviceId: Value(entry.deviceId),
       vehicleId: Value(entry.vehicleId),
+      exchangeRateAtEntry: Value(entry.exchangeRateAtEntry),
+      defaultCurrencyAtEntry: Value(entry.defaultCurrencyAtEntry),
     );
   }
 
